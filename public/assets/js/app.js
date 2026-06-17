@@ -284,19 +284,6 @@
   }
   setInterval(tick, 1000); tick();
 
-  // ---- "Add to Home Screen" hint (iOS, only when not already installed) ----
-  const hint = document.querySelector('.install-hint');
-  const standalone = window.navigator.standalone === true ||
-    window.matchMedia('(display-mode: standalone)').matches;
-  const isiOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  if (hint && isiOS && !standalone && !localStorage.getItem('kmh.hintDismissed')) {
-    hint.classList.add('show');
-    hint.querySelector('.close').addEventListener('click', () => {
-      hint.classList.remove('show');
-      localStorage.setItem('kmh.hintDismissed', '1');
-    });
-  }
-
   // Expose shared bits (airport is set during init()).
   window.App = { API, isStatic, dataUrl, computeAge, Stars, statusClass, formatAge,
                  loadLeaflet, openFlight, closeFlight, show, flightApi,
