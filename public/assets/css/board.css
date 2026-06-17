@@ -204,10 +204,9 @@ main {
   display: flex;
   flex-direction: column;
   padding: 0 0.5rem;
-  /* clear the fixed bottom nav (hidden on the home launchpad) */
+  /* clear the fixed bottom nav (now shown on every view, home included) */
   padding-bottom: calc(4.6rem + env(safe-area-inset-bottom));
 }
-body.home-active main { padding-bottom: 0; }
 
 /* Board & radar stretch to fill the screen (great on an iPad in landscape). */
 [data-view="board"]:not(.hidden),
@@ -416,7 +415,6 @@ body.home-active main { padding-bottom: 0; }
 .hidden { display: none !important; }
 
 /* ---------- Home launchpad ---------- */
-body.home-active .tabs { display: none; }
 /* Fill the screen and centre the launchpad buttons vertically. */
 [data-view="home"]:not(.hidden) {
   flex: 1;
@@ -426,6 +424,7 @@ body.home-active .tabs { display: none; }
   justify-content: center;
 }
 .home {
+  width: 100%;            /* stretch to max-width; auto margins then just centre */
   max-width: 640px;
   margin: 0 auto;
   padding: 1rem;
