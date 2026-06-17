@@ -34,7 +34,8 @@ jobs:
 
       # Run the app in static mode (no PHP backend on this host).
       - name: Pin static data mode
-        run: echo "window.APP_CONFIG = { dataMode: 'static' };" > public/assets/js/runtime-config.js
+        run: |
+          echo "window.APP_CONFIG = { dataMode: 'static' };" > public/assets/js/runtime-config.js
 
       - name: Upload public/ to IONOS via SFTP
         if: env.SERVER != ''
@@ -50,4 +51,5 @@ jobs:
 
       - name: Note when not configured
         if: env.SERVER == ''
-        run: echo "IONOS_SFTP_* secrets not set yet — skipping upload. Add them in repo Settings → Secrets."
+        run: |
+          echo "IONOS_SFTP_* secrets not set yet — skipping upload. Add them in repo Settings then re-run."
