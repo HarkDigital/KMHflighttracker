@@ -30,7 +30,14 @@ window.Adsbdb = (function () {
   function airport(o) {
     if (!o) return null;
     return { iata: o.iata_code || '', icao: o.icao_code || '',
-             name: o.name || '', city: o.municipality || '' };
+             name: o.name || '', city: o.municipality || '',
+             lat: o.latitude, lon: o.longitude };
+  }
+  function apRouteset(o) {
+    if (!o) return null;
+    return { iata: o.iata || '', icao: o.icao || '',
+             name: o.name || '', city: o.location || '',
+             lat: o.lat, lon: o.lon };
   }
 
   async function cached(key, fetcher) {
@@ -72,5 +79,33 @@ window.Adsbdb = (function () {
     });
   }
 
-  return { route, aircraft };
+  // Position-aware route resolver: tries adsb.lol's routeset (the tar1090 route
+  // DB, disambiguated by current position — more current) and falls back to
+  // adsbdb. Returns { origin, destination, approx } or null.
+  async function resolve(callsign, lat, lon) {
+    callsign = (callsign || '').trim().toUpperCase();
+    if (!callsign) return null;
+    return cached('rt.' + callsign, async () => {
+      if (lat != null && lon != null) {
+        try {
+          const res = await fetch('https://api.adsb.lol/api/0/routeset', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planes: [{ callsign, lat, lng: lon }] }),
+          });
+          if (res.ok) {
+            const j = await res.json();
+            const r = Array.isArray(j) ? j[0] : null;
+            const aps = r && r._airports;
+            if (r && r.plausible && Array.isArray(aps) && aps.length >= 2) {
+              return { origin: apRouteset(aps[0]), destination: apRouteset(aps[aps.length - 1]), approx: false };
+            }
+          }
+        } catch (_) {}
+      }
+      const r = await route(callsign);
+      return r ? { origin: r.origin, destination: r.destination, approx: true } : null;
+    });
+  }
+
+  return { route, aircraft, resolve };
 })();

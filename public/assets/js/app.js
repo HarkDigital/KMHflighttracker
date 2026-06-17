@@ -87,16 +87,67 @@
 
   // ---- Tabs ----
   let currentView = 'board';
+  const VIEWS = ['home', 'board', 'track', 'tracked', 'radar', 'flight'];
   const tabs = document.querySelectorAll('.tabs button');
   const views = document.querySelectorAll('[data-view]');
   function show(view) {
+    if (!VIEWS.includes(view)) view = 'home';
     currentView = view;
+    document.body.classList.toggle('home-active', view === 'home');
     tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === view));
     views.forEach(v => v.classList.toggle('hidden', v.dataset.view !== view));
     if (window.Views && window.Views[view]) window.Views[view].activate();
-    location.hash = view;
+    if (view !== 'flight') location.hash = view;   // flight view manages its own hash
+    window.scrollTo(0, 0);
   }
   tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
+
+  // Home launchpad: Board & Radar always start at PHL.
+  function goHomeTarget(view) {
+    if (view === 'board' || view === 'radar') {
+      const phl = (airports.find(a => a.icao === 'KPHL')) ||
+        { icao: 'KPHL', iata: 'PHL', name: 'PHILADELPHIA', lat: 39.8729, lon: -75.2437 };
+      setAirport(phl, { silent: true });
+    }
+    show(view);
+  }
+  document.querySelectorAll('.home a[data-home]').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); goHomeTarget(a.dataset.home); });
+  });
+  // Logo returns to the launchpad.
+  const brand = document.querySelector('.brandbar');
+  if (brand) brand.addEventListener('click', () => show('home'));
+
+  // Lazy Leaflet loader, shared by the radar and the flight map.
+  let leafletPromise = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise(resolve => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(css);
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      s.onload = () => resolve(); s.onerror = () => resolve();
+      document.head.appendChild(s);
+    });
+    return leafletPromise;
+  }
+
+  // Open the flight detail page for a callsign.
+  let flightTarget = null;
+  let returnView = 'home';
+  function openFlight(cs) {
+    cs = (cs || '').trim().toUpperCase();
+    if (!cs) return;
+    if (currentView !== 'flight') returnView = currentView;
+    flightTarget = cs;
+    App.flight = cs;
+    location.hash = 'flight/' + cs;
+    show('flight');
+  }
+  function closeFlight() { show(returnView || 'home'); }
 
   // ---- Airport selection + search ----
   const chip = document.getElementById('current-airport');
@@ -222,7 +273,7 @@
 
   // Expose shared bits (airport is set during init()).
   window.App = { API, isStatic, dataUrl, computeAge, Stars, statusClass, formatAge,
-                 airport: null, airports: [] };
+                 loadLeaflet, openFlight, closeFlight, show, airport: null, airports: [], flight: null };
 
   // ---- Init: load the airport list, then start ----
   (async function init() {
@@ -240,7 +291,11 @@
     if (!initial) initial = airports.find(a => a.icao === 'KPHL') || airports[0];
     setAirport(initial, { silent: true });
 
-    const start = (location.hash || '#board').slice(1);
-    show(['board', 'track', 'tracked', 'map'].includes(start) ? start : 'board');
+    const hash = (location.hash || '').slice(1);
+    if (hash.indexOf('flight/') === 0) {
+      openFlight(hash.slice(7));
+    } else {
+      show(['board', 'track', 'tracked', 'radar'].includes(hash) ? hash : 'home');
+    }
   })();
 })();

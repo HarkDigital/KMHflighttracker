@@ -62,7 +62,8 @@
     const star = document.createElement('div');
     star.className = 'col-star star';
     star.textContent = '☆';
-    star.addEventListener('click', () => {
+    star.addEventListener('click', e => {
+      e.stopPropagation();
       const n = star.dataset.flight;
       if (!n) return;
       const on = App.Stars.toggle(n);
@@ -70,6 +71,7 @@
       star.textContent = on ? '★' : '☆';
     });
     el.appendChild(star);
+    el.addEventListener('click', () => { if (el.dataset.flight) App.openFlight(el.dataset.flight); });
     return { el, fields, star };
   }
 
@@ -90,6 +92,7 @@
       });
       r.el.querySelector('.col-status').className = 'col-status ' + App.statusClass(row.status);
       const n = (row.flight || '').toUpperCase();
+      r.el.dataset.flight = n;
       r.star.dataset.flight = n;
       const on = App.Stars.has(n);
       r.star.classList.toggle('on', on);
@@ -123,7 +126,7 @@
       rows.push({
         callsign: a.callsign, flight: a.callsign, reg: a.reg, aircraft: a.type,
         dist, time, status: type === 'arrivals' ? 'ARRIVING' : 'DEPARTING',
-        place: '', placeIata: '', hasRoute: false,
+        lat: a.lat, lon: a.lon, place: '', placeIata: '', hasRoute: false,
       });
     }
     rows.sort((x, y) => x.dist - y.dist);
@@ -132,7 +135,7 @@
 
   async function enrich(rows) {
     await Promise.all(rows.map(async row => {
-      const rt = await Adsbdb.route(row.callsign);
+      const rt = await Adsbdb.resolve(row.callsign, row.lat, row.lon);
       const apt = rt && (type === 'arrivals' ? rt.origin : rt.destination);
       if (apt) {
         row.place = (apt.city || apt.name || apt.iata || '').toUpperCase();

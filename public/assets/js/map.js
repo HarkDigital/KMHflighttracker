@@ -29,25 +29,6 @@
     return (a && a.lat != null) ? [a.lat, a.lon] : [39.8729, -75.2437];
   }
 
-  // Load Leaflet on first Map-tab open so it never blocks app startup.
-  let leafletPromise = null;
-  function loadLeaflet() {
-    if (window.L) return Promise.resolve();
-    if (leafletPromise) return leafletPromise;
-    leafletPromise = new Promise(resolve => {
-      const css = document.createElement('link');
-      css.rel = 'stylesheet';
-      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(css);
-      const s = document.createElement('script');
-      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      s.onload = () => resolve();
-      s.onerror = () => resolve();   // resolve anyway; ensureMap() guards on L
-      document.head.appendChild(s);
-    });
-    return leafletPromise;
-  }
-
   function ensureMap() {
     if (map || typeof L === 'undefined') return;
     map = L.map('map', { zoomControl: true, attributionControl: true });
@@ -128,7 +109,8 @@
       const [lat, lon] = deadReckon(a, (now - a.base) / 1000);
       if (!a.marker) {
         a.marker = L.marker([lat, lon], { icon: icon(a.track, a.alt === 'ground') });
-        a.marker.bindPopup(popup(a));
+        if (a.flight) a.marker.on('click', () => App.openFlight(a.flight));
+        else a.marker.bindPopup(popup(a));
         layer.addLayer(a.marker);
       } else {
         a.marker.setLatLng([lat, lon]);
@@ -141,9 +123,9 @@
   }
 
   window.Views = window.Views || {};
-  window.Views.map = {
+  window.Views.radar = {
     async activate() {
-      await loadLeaflet();
+      await App.loadLeaflet();
       ensureMap();
       if (!map) return;
       const icaoNow = App.airport ? App.airport.icao : null;
