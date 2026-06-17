@@ -72,9 +72,18 @@ cron cadence to land under ~600 units/month. A ~$5–9/mo AeroDataBox tier remov
 limit with no code changes. The client (`AeroDataBox.php`) also hard-stops and serves
 stale cache once the monthly budget is reached.
 
-## Switching airports
-Change `airport_icao` / `airport_iata` / `airport_name` / `bbox` in `private/config.php`.
-No code changes required.
+## Airports (multi-airport)
+The selectable airports live in **`public/airports.json`** — edit that list to add or
+remove airports (each needs `icao`, `iata`, `name`, `lat`, `lon`). The header dropdown is
+built from it, the build generates a board per airport, and the radar centres on whichever
+is selected (the choice is remembered per device).
+
+- The **radar** is client-side, so it can centre on any airport at no API cost.
+- The **boards** use AeroDataBox. In mock mode (no key) all airports show sample data with a
+  "SAMPLE DATA" badge. With a real key, **each airport costs ~2 calls per refresh** — keep the
+  list short or raise the cron/Actions interval to stay under the free ~600 units/month.
+- To make an airport **radar-only** (no board, no API cost), add `"boards": false` to its
+  entry in `airports.json`.
 
 ## Project layout
 ```

@@ -6,7 +6,8 @@
 require __DIR__ . '/_bootstrap.php';
 
 $type = ($_GET['type'] ?? 'departures') === 'arrivals' ? 'arrivals' : 'departures';
-$icao = $config['airport_icao'];
+// Airport is selectable; sanitize and default to the configured one.
+$icao = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['icao'] ?? '')) ?: $config['airport_icao'];
 $staleSeconds = (int)($config['board_stale_min'] ?? 75) * 60;
 
 $env = cache_envelope($cache, "board_{$icao}_{$type}", $staleSeconds);

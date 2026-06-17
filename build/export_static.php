@@ -4,20 +4,20 @@
  * from public/data/. This is the "cron" equivalent for static hosting: a
  * GitHub Actions workflow runs it on a schedule, then deploys public/.
  *
- * It makes only the cheap, essential API calls:
- *   - 2 AeroDataBox FIDS calls (departures + arrivals)
- *   - per-flight detail is SYNTHESIZED from those board rows (no extra units)
- *   - 1 OpenSky call for the live map (separate free quota)
+ * Generates a board (departures + arrivals) for EVERY airport listed in
+ * public/airports.json, into public/data/<ICAO>/. Per-flight detail is
+ * synthesized from the board rows (no extra API units) into a shared,
+ * airport-independent public/data/flights/ folder so starred flights resolve
+ * regardless of which airport is selected.
  *
- * Runs against the same config + API clients as the IONOS cron, and honours
- * 'mock' mode so it works with no API keys (useful for a first deploy).
+ * The live radar (Map tab) is client-side and needs no prebuilt data.
  *
+ * Honours 'mock' mode so it works with no API keys.
  * Usage:  php build/export_static.php
  */
 
 require __DIR__ . '/../cron/lib/Cache.php';
 require __DIR__ . '/../cron/lib/AeroDataBox.php';
-require __DIR__ . '/../cron/lib/OpenSky.php';
 require __DIR__ . '/../cron/lib/normalize.php';
 
 $root = dirname(__DIR__);
@@ -27,26 +27,32 @@ if (!is_file($configFile)) {
     exit(2);
 }
 $config = require $configFile;
+$isMock = !empty($config['mock']) || getenv('MOCK') === '1';
 
-$dataDir = $root . '/public/data';
+$dataDir    = $root . '/public/data';
 $flightsDir = $dataDir . '/flights';
 @mkdir($flightsDir, 0775, true);
 
-$cache = new Cache($config['cache_dir'] ?? sys_get_temp_dir());
-$adb   = new AeroDataBox($config, $cache);
-$osky  = new OpenSky($config, $cache);
+// Airport list (fallback to the single configured airport for back-compat).
+$airportsFile = $root . '/public/airports.json';
+$airports = is_file($airportsFile) ? json_decode((string)file_get_contents($airportsFile), true) : null;
+if (!is_array($airports) || !$airports) {
+    $airports = [[
+        'icao' => $config['airport_icao'] ?? 'KPHL',
+        'iata' => $config['airport_iata'] ?? '',
+        'name' => $config['airport_name'] ?? '',
+    ]];
+}
 
-$icao  = $config['airport_icao'];
-$iata  = $config['airport_iata'] ?? '';
-$name  = $config['airport_name'] ?? $icao;
+$cache  = new Cache($config['cache_dir'] ?? sys_get_temp_dir());
+$adb    = new AeroDataBox($config, $cache);
 $window = (int)($config['board_window_hours'] ?? 8);
-$now = time();
+$now    = time();
 
-/** Write a JSON file (pretty + atomic-ish). */
 function put_json(string $file, $data): void
 {
+    @mkdir(dirname($file), 0775, true);
     file_put_contents($file, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
-    echo "wrote " . basename(dirname($file)) . '/' . basename($file) . "\n";
 }
 
 /** Turn a board row into a flight card record (no extra API call). */
@@ -65,65 +71,52 @@ function synth_flight(array $row, string $type, string $iata, string $name, int 
     ];
 }
 
-// ---- Board (departures + arrivals) ----
-$flightFiles = [];
-foreach (['departures', 'arrivals'] as $type) {
-    try {
-        $raw = $adb->airportBoard($icao, $type, $window);
-        $items = $raw[$type] ?? ($raw['departures'] ?? ($raw['arrivals'] ?? []));
-        $rows = [];
-        foreach ((is_array($items) ? $items : []) as $item) {
-            if (is_array($item)) $rows[] = normalize_board_item($item, $type);
-        }
-        usort($rows, fn($a, $b) => strcmp($a['time'], $b['time']));
+$globalFlights = [];
 
-        put_json("$dataDir/board_$type.json", [
-            'airport' => $name, 'icao' => $icao, 'type' => $type,
-            'rows' => $rows, 'fetchedAt' => $now, 'stale' => false,
-        ]);
+foreach ($airports as $ap) {
+    $icao = $ap['icao'] ?? '';
+    if ($icao === '') continue;
+    $iata = $ap['iata'] ?? '';
+    $name = $ap['name'] ?? $icao;
 
-        // Synthesize a per-flight file for each board flight.
-        foreach ($rows as $row) {
-            $num = preg_replace('/[^A-Z0-9]/', '', strtoupper($row['flight']));
-            if ($num === '') continue;
-            $flightFiles[$num] = synth_flight($row, $type, $iata, $name, $now);
+    // An airport can opt out of boards (radar-only) to protect API quota.
+    if (array_key_exists('boards', $ap) && $ap['boards'] === false) {
+        put_json("$dataDir/$icao/board_departures.json", ['icao' => $icao, 'iata' => $iata,
+            'airport' => $name, 'type' => 'departures', 'rows' => [], 'boardsDisabled' => true, 'fetchedAt' => $now]);
+        put_json("$dataDir/$icao/board_arrivals.json", ['icao' => $icao, 'iata' => $iata,
+            'airport' => $name, 'type' => 'arrivals', 'rows' => [], 'boardsDisabled' => true, 'fetchedAt' => $now]);
+        echo "$icao: boards disabled (radar-only)\n";
+        continue;
+    }
+
+    foreach (['departures', 'arrivals'] as $type) {
+        try {
+            $raw = $adb->airportBoard($icao, $type, $window);
+            $items = $raw[$type] ?? ($raw['departures'] ?? ($raw['arrivals'] ?? []));
+            $rows = [];
+            foreach ((is_array($items) ? $items : []) as $item) {
+                if (is_array($item)) $rows[] = normalize_board_item($item, $type);
+            }
+            usort($rows, fn($a, $b) => strcmp($a['time'], $b['time']));
+
+            put_json("$dataDir/$icao/board_$type.json", [
+                'icao' => $icao, 'iata' => $iata, 'airport' => $name, 'type' => $type,
+                'rows' => $rows, 'fetchedAt' => $now, 'mock' => $isMock,
+            ]);
+
+            foreach ($rows as $row) {
+                $num = preg_replace('/[^A-Z0-9]/', '', strtoupper($row['flight']));
+                if ($num !== '') $globalFlights[$num] = synth_flight($row, $type, $iata, $name, $now);
+            }
+            echo "$icao $type: " . count($rows) . " flights\n";
+        } catch (Throwable $e) {
+            fwrite(STDERR, "$icao $type ERROR: " . $e->getMessage() . "\n");
         }
-    } catch (Throwable $e) {
-        fwrite(STDERR, "board[$type] ERROR: " . $e->getMessage() . "\n");
     }
 }
-foreach ($flightFiles as $num => $rec) {
+
+foreach ($globalFlights as $num => $rec) {
     put_json("$flightsDir/$num.json", $rec);
 }
 
-// ---- Live map (OpenSky) ----
-try {
-    $raw = $osky->statesInBbox($config['bbox']);
-    $aircraft = [];
-    foreach (($raw['states'] ?? []) as $s) {
-        if (!is_array($s) || $s[5] === null || $s[6] === null) continue;
-        $aircraft[] = [
-            'icao24' => $s[0], 'callsign' => trim((string)($s[1] ?? '')),
-            'country' => $s[2] ?? '', 'lon' => $s[5], 'lat' => $s[6],
-            'altitude' => $s[13] ?? $s[7], 'onGround' => (bool)($s[8] ?? false),
-            'velocity' => $s[9], 'heading' => $s[10] ?? 0,
-        ];
-    }
-    put_json("$dataDir/states.json", [
-        'time' => $raw['time'] ?? $now, 'aircraft' => $aircraft,
-        'bbox' => $config['bbox'],
-        'airport' => ['iata' => $iata, 'name' => $name],
-        'fetchedAt' => $now,
-    ]);
-} catch (Throwable $e) {
-    fwrite(STDERR, "states ERROR: " . $e->getMessage() . "\n");
-    // Write an empty states file so the map degrades gracefully.
-    if (!is_file("$dataDir/states.json")) {
-        put_json("$dataDir/states.json", [
-            'time' => $now, 'aircraft' => [], 'bbox' => $config['bbox'],
-            'airport' => ['iata' => $iata, 'name' => $name], 'fetchedAt' => $now,
-        ]);
-    }
-}
-
-echo "export complete\n";
+echo "export complete: " . count($airports) . " airports, " . count($globalFlights) . " flights\n";

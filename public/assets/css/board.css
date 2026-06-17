@@ -53,6 +53,19 @@ body {
   font-size: 1.15rem;
 }
 .topbar .sub { color: var(--ink-dim); letter-spacing: 0.2em; font-size: 0.7rem; }
+.airport-select {
+  background: var(--tile);
+  color: var(--amber);
+  border: 1px solid #000;
+  border-radius: 3px;
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 0.3rem 0.5rem;
+  max-width: 14rem;
+  cursor: pointer;
+}
+.airport-select:focus { outline: 1px solid var(--amber); }
 .topbar .clock {
   margin-left: auto;
   font-variant-numeric: tabular-nums;

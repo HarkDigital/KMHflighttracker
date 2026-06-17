@@ -1,35 +1,38 @@
 /**
- * map.js — live "radar" of aircraft around the airport (à la FlightRadar24).
+ * map.js — live "radar" of aircraft around the selected airport (à la
+ * FlightRadar24).
  *
  * Works on static hosting (GitHub Pages) because it polls a free, keyless,
  * CORS-enabled ADS-B feed directly from the browser every few seconds, and
  * dead-reckons each aircraft between polls so they glide smoothly instead of
- * jumping. No backend or API key required.
+ * jumping. No backend or API key required. The centre follows whichever
+ * airport is selected in the header.
  *
  * Data: adsb.lol (primary) / airplanes.live (fallback) — community ADS-B
  * aggregators. FlightRadar24's own data is proprietary and not used.
- *
- * Override the centre/radius via:
- *   window.APP_CONFIG = { radar: { lat: 39.8729, lon: -75.2437, radiusNm: 120 } }
  */
 (function () {
   'use strict';
 
   const cfg = (window.APP_CONFIG && window.APP_CONFIG.radar) || {};
-  const CENTER = [cfg.lat ?? 39.8729, cfg.lon ?? -75.2437];   // PHL
   const RADIUS_NM = cfg.radiusNm ?? 120;
   const POLL_MS = 6000;        // fetch fresh positions (feeds allow ~1 req/s)
   const TICK_MS = 1000;        // dead-reckon redraw between fetches
   const STALE_MS = 60000;      // drop aircraft not seen for this long
 
-  const PROVIDERS = [
-    nm => `https://api.adsb.lol/v2/point/${CENTER[0]}/${CENTER[1]}/${nm}`,
-    nm => `https://api.airplanes.live/v2/point/${CENTER[0]}/${CENTER[1]}/${nm}`,
-  ];
-  let providerIdx = 0;
+  let map = null, layer = null, apMarker = null, pollTimer = null, tickTimer = null;
+  let lastIcao = null, providerIdx = 0;
+  const fleet = new Map();     // hex -> aircraft state + marker
 
-  let map = null, layer = null, pollTimer = null, tickTimer = null;
-  const fleet = new Map();     // hex -> { lat, lon, track, gs, alt, flight, type, reg, seen, marker }
+  function center() {
+    const a = App.airport;
+    return (a && a.lat != null) ? [a.lat, a.lon] : [39.8729, -75.2437];
+  }
+
+  const PROVIDERS = [
+    c => `https://api.adsb.lol/v2/point/${c[0]}/${c[1]}/${RADIUS_NM}`,
+    c => `https://api.airplanes.live/v2/point/${c[0]}/${c[1]}/${RADIUS_NM}`,
+  ];
 
   function ensureMap() {
     if (map || typeof L === 'undefined') return;
@@ -39,10 +42,6 @@
       maxZoom: 12,
     }).addTo(map);
     layer = L.layerGroup().addTo(map);
-    map.setView(CENTER, 8);
-    // Mark the airport.
-    L.circleMarker(CENTER, { radius: 4, color: '#f5b301', weight: 2, fillOpacity: 1 })
-      .addTo(map).bindTooltip('PHL', { permanent: false });
   }
 
   function icon(track, onGround) {
@@ -72,8 +71,14 @@
     return [a.lat + dLat, a.lon + dLon];
   }
 
+  function clearFleet() {
+    fleet.forEach(a => { if (a.marker) layer.removeLayer(a.marker); });
+    fleet.clear();
+  }
+
   async function fetchFleet() {
-    const url = PROVIDERS[providerIdx](RADIUS_NM);
+    if (!map) return;
+    const url = PROVIDERS[providerIdx](center());
     let data;
     try {
       const res = await fetch(url, { cache: 'no-store' });
@@ -100,12 +105,11 @@
       a.type = raw.t || '';
       a.reg = raw.r || '';
       a.seen = now;
-      a.base = now;                 // timestamp this fix was taken (for dead reckoning)
+      a.base = now;
     });
     redraw();
   }
 
-  // Redraw markers, extrapolating positions from the last fix.
   function redraw() {
     if (!map) return;
     const now = Date.now();
@@ -126,10 +130,6 @@
         a.marker.setPopupContent(popup(a));
       }
     });
-    updateCount();
-  }
-
-  function updateCount() {
     const el = document.getElementById('radar-count');
     if (el) el.textContent = fleet.size + ' aircraft';
   }
@@ -138,6 +138,20 @@
   window.Views.map = {
     activate() {
       ensureMap();
+      if (!map) return;
+      const icaoNow = App.airport ? App.airport.icao : null;
+      const changed = icaoNow !== lastIcao;
+      if (changed) {
+        lastIcao = icaoNow;
+        clearFleet();
+        map.setView(center(), 8);
+        if (!apMarker) {
+          apMarker = L.circleMarker(center(), { radius: 4, color: '#f5b301', weight: 2, fillOpacity: 1 }).addTo(map);
+        } else {
+          apMarker.setLatLng(center());
+        }
+        apMarker.bindTooltip(App.airport ? App.airport.iata : '', { permanent: false });
+      }
       setTimeout(() => { if (map) map.invalidateSize(); }, 60);
       fetchFleet();
       clearInterval(pollTimer); clearInterval(tickTimer);

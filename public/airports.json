@@ -1,0 +1,13 @@
+[
+  { "icao": "KPHL", "iata": "PHL", "name": "PHILADELPHIA",   "lat": 39.8729, "lon": -75.2437 },
+  { "icao": "KJFK", "iata": "JFK", "name": "NEW YORK JFK",   "lat": 40.6413, "lon": -73.7781 },
+  { "icao": "KBOS", "iata": "BOS", "name": "BOSTON",         "lat": 42.3656, "lon": -71.0096 },
+  { "icao": "KORD", "iata": "ORD", "name": "CHICAGO OHARE",  "lat": 41.9742, "lon": -87.9073 },
+  { "icao": "KATL", "iata": "ATL", "name": "ATLANTA",        "lat": 33.6407, "lon": -84.4277 },
+  { "icao": "KLAX", "iata": "LAX", "name": "LOS ANGELES",    "lat": 33.9416, "lon": -118.4085 },
+  { "icao": "KSFO", "iata": "SFO", "name": "SAN FRANCISCO",  "lat": 37.6213, "lon": -122.3790 },
+  { "icao": "KDEN", "iata": "DEN", "name": "DENVER",         "lat": 39.8561, "lon": -104.6737 },
+  { "icao": "KSEA", "iata": "SEA", "name": "SEATTLE",        "lat": 47.4502, "lon": -122.3088 },
+  { "icao": "KMIA", "iata": "MIA", "name": "MIAMI",          "lat": 25.7959, "lon": -80.2870 },
+  { "icao": "EGLL", "iata": "LHR", "name": "LONDON HEATHROW","lat": 51.4700, "lon": -0.4543 }
+]

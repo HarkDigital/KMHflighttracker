@@ -76,14 +76,30 @@
     });
   }
 
+  const noteEl = document.getElementById('board-note');
+
+  function note(msg) {
+    while (rowPool.length) rowPool.pop().el.remove();
+    if (noteEl) { noteEl.textContent = msg; noteEl.classList.remove('hidden'); }
+  }
+
   async function poll() {
     try {
       const res = await fetch(App.dataUrl('board', type), { cache: 'no-store' });
+      if (!res.ok) { note('No board data yet for this airport.'); return; }
       const data = await res.json();
+
+      if (data.boardsDisabled) {
+        note((data.airport || 'This airport') + ' is radar-only. Open the Map tab for live traffic.');
+        if (updatedEl) { updatedEl.textContent = ''; updatedEl.classList.remove('stale'); }
+        return;
+      }
+      if (noteEl) noteEl.classList.add('hidden');
       render(data.rows || []);
       if (updatedEl) {
-        updatedEl.textContent = 'UPDATED ' + App.formatAge(App.computeAge(data));
-        updatedEl.classList.toggle('stale', !!data.stale);
+        updatedEl.textContent = data.mock ? 'SAMPLE DATA'
+          : 'UPDATED ' + App.formatAge(App.computeAge(data));
+        updatedEl.classList.toggle('stale', !!data.stale || !!data.mock);
       }
     } catch (e) {
       if (updatedEl) updatedEl.textContent = 'OFFLINE';
