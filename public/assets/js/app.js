@@ -140,6 +140,7 @@
   let returnView = 'home';
   function openFlight(cs) {
     cs = (cs || '').trim().toUpperCase();
+    if (window.Airlines) cs = Airlines.toCallsign(cs);   // DL2092 -> DAL2092
     if (!cs) return;
     if (currentView !== 'flight') returnView = currentView;
     flightTarget = cs;
@@ -183,23 +184,41 @@
     return exact.concat(starts, contains).slice(0, 8);
   }
 
+  function buildResults(q) {
+    const list = [];
+    const cl = (q || '').toUpperCase().replace(/\s+/g, '');
+    if (window.Airlines && Airlines.looksLikeFlight(cl)) {
+      const callsign = Airlines.toCallsign(cl);
+      list.push({ flight: callsign, label: cl, airline: Airlines.airlineOf(callsign) });
+    }
+    return list.concat(searchAirports(q));
+  }
+
   function renderResults(list) {
     if (!list.length) { resultsEl.classList.add('hidden'); resultsEl.innerHTML = ''; return; }
-    resultsEl.innerHTML = list.map((a, i) =>
-      '<li data-i="' + i + '"' + (i === 0 ? ' class="active"' : '') + '>' +
+    resultsEl.innerHTML = list.map((a, i) => {
+      const active = i === 0 ? ' class="active"' : '';
+      if (a.flight) {
+        return '<li data-i="' + i + '"' + active + '><span class="iata">✈</span>' +
+          '<span class="nm">Track flight ' + a.label + '</span>' +
+          '<span class="ct">' + (a.airline || '') + '</span></li>';
+      }
+      return '<li data-i="' + i + '"' + active + '>' +
         '<span class="iata">' + (a.iata || a.icao || '') + '</span>' +
         '<span class="nm">' + (a.name || '') + '</span>' +
-        '<span class="ct">' + (a.country || '') + '</span></li>').join('');
+        '<span class="ct">' + (a.country || '') + '</span></li>';
+    }).join('');
     resultsEl.classList.remove('hidden');
     resultsEl._list = list;
   }
 
   function pick(a) {
     if (!a) return;
-    setAirport(a);
     searchInput.value = '';
     searchInput.blur();
     resultsEl.classList.add('hidden');
+    if (a.flight) { App.openFlight(a.flight); return; }
+    setAirport(a);
   }
 
   // Lazy-load a full worldwide airport list so any airport is searchable.
@@ -228,7 +247,7 @@
     if (!searchInput) return;
     let activeIdx = 0;
     searchInput.addEventListener('focus', loadFullDb);
-    searchInput.addEventListener('input', () => { activeIdx = 0; renderResults(searchAirports(searchInput.value)); });
+    searchInput.addEventListener('input', () => { activeIdx = 0; renderResults(buildResults(searchInput.value)); });
     searchInput.addEventListener('keydown', e => {
       const items = resultsEl.querySelectorAll('li');
       if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); }

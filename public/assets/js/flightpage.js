@@ -20,6 +20,24 @@
     return !v || v.classList.contains('hidden');
   };
 
+  const toRad = d => d * Math.PI / 180;
+  function havNm(la1, lo1, la2, lo2) {
+    const R = 3440.065;
+    const dLa = toRad(la2 - la1), dLo = toRad(lo2 - lo1);
+    const a = Math.sin(dLa / 2) ** 2 + Math.cos(toRad(la1)) * Math.cos(toRad(la2)) * Math.sin(dLo / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+  const p2 = n => String(n).padStart(2, '0');
+  const hm = d => p2(d.getHours()) + ':' + p2(d.getMinutes());
+  function times(ac, from, to) {
+    let dep = '—', eta = '—';
+    if (ac && typeof ac.lat === 'number' && ac.gs > 40 && ac.alt !== 'ground') {
+      if (to && to.lat != null) eta = '~' + hm(new Date(Date.now() + havNm(ac.lat, ac.lon, to.lat, to.lon) / ac.gs * 3600000));
+      if (from && from.lat != null) dep = '~' + hm(new Date(Date.now() - havNm(from.lat, from.lon, ac.lat, ac.lon) / ac.gs * 3600000));
+    }
+    return { dep, eta };
+  }
+
   function tele(ac) {
     return {
       alt: ac && typeof ac.alt === 'number' ? ac.alt.toLocaleString() + ' ft'
@@ -48,18 +66,25 @@
     const type = (ac && ac.type) || (acInfo && acInfo.type) || '';
     const reg = (ac && ac.reg) || (acInfo && acInfo.reg) || '';
     const t = tele(ac);
+    const tt = times(ac, from, to);
+    const airline = window.Airlines ? Airlines.airlineOf(num) : '';
     const starred = App.Stars.has(num);
 
     el.innerHTML =
       '<button class="fp-back">‹ Back</button>' +
       '<div class="fp-head"><span class="fp-num">' + esc(num) + '</span>' +
         '<span class="fp-status ' + App.statusClass(status) + '">' + status + '</span></div>' +
+      (airline ? '<div class="fp-airline">' + esc(airline) + '</div>' : '') +
       '<div class="fp-route">' +
         '<div class="fp-ap"><div class="code">' + esc(from && (from.iata || from.icao) || '???') + '</div>' +
           '<div class="city">' + esc(from && (from.city || from.name) || '') + '</div></div>' +
         '<div class="fp-arrow">✈</div>' +
         '<div class="fp-ap"><div class="code">' + esc(to && (to.iata || to.icao) || '???') + '</div>' +
           '<div class="city">' + esc(to && (to.city || to.name) || '') + '</div></div>' +
+      '</div>' +
+      '<div class="fp-times">' +
+        '<div class="fp-stat"><div class="v" id="fp-dep">' + tt.dep + '</div><div class="k">Est. takeoff</div></div>' +
+        '<div class="fp-stat"><div class="v" id="fp-eta">' + tt.eta + '</div><div class="k">Est. landing (ETA)</div></div>' +
       '</div>' +
       '<div class="fp-grid">' +
         stat(t.alt, 'Altitude') + stat(t.gs, 'Ground speed') + stat(t.vs, 'Vert. speed') +
@@ -143,8 +168,15 @@
     let ac = null;
     try { const live = await Adsb.callsign(cs); ac = live && live[0]; } catch (_) {}
     const t = tele(ac);
-    const v = el.querySelectorAll('.fp-stat .v');
-    if (v.length >= 4) { v[0].textContent = t.alt; v[1].textContent = t.gs; v[2].textContent = t.vs; v[3].textContent = t.hdg; }
+    const grid = el.querySelector('.fp-grid');
+    if (grid) {
+      const v = grid.querySelectorAll('.fp-stat .v');
+      if (v.length >= 4) { v[0].textContent = t.alt; v[1].textContent = t.gs; v[2].textContent = t.vs; v[3].textContent = t.hdg; }
+    }
+    const tt = times(ac, route && route.origin, route && route.destination);
+    const dep = el.querySelector('#fp-dep'), eta = el.querySelector('#fp-eta');
+    if (dep) dep.textContent = tt.dep;
+    if (eta) eta.textContent = tt.eta;
     draw(ac, route && route.origin, route && route.destination, false);
   }
 

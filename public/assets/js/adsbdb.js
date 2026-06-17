@@ -107,5 +107,40 @@ window.Adsbdb = (function () {
     });
   }
 
-  return { route, aircraft, resolve };
+  // Resolve many callsigns at once via adsb.lol's routeset (one request for the
+  // whole board). Returns a map callsign -> { origin, destination } | null.
+  async function resolveBatch(planes) {
+    const out = {};
+    const need = [];
+    for (const p of planes) {
+      const cs = (p.callsign || '').toUpperCase();
+      if (!cs) continue;
+      if (mem.has('rt.' + cs)) { out[cs] = mem.get('rt.' + cs); continue; }
+      const ls = lsGet('rt.' + cs);
+      if (ls !== undefined) { mem.set('rt.' + cs, ls); out[cs] = ls; continue; }
+      need.push({ cs, lat: p.lat, lng: p.lon });
+    }
+    if (need.length) {
+      try {
+        const res = await fetch('https://api.adsb.lol/api/0/routeset', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planes: need.map(n => ({ callsign: n.cs, lat: n.lat, lng: n.lng })) }),
+        });
+        const j = res.ok ? await res.json() : [];
+        (Array.isArray(j) ? j : []).forEach((r, i) => {
+          const cs = need[i] && need[i].cs;
+          if (!cs) return;
+          const aps = r && r._airports;
+          const route = (r && r.plausible && Array.isArray(aps) && aps.length >= 2)
+            ? { origin: apRouteset(aps[0]), destination: apRouteset(aps[aps.length - 1]), approx: false } : null;
+          mem.set('rt.' + cs, route); lsSet('rt.' + cs, route); out[cs] = route;
+        });
+      } catch (_) {}
+      // mark any still-unknown as null so we don't refetch every poll
+      need.forEach(n => { if (out[n.cs] === undefined) { out[n.cs] = null; mem.set('rt.' + n.cs, null); } });
+    }
+    return out;
+  }
+
+  return { route, aircraft, resolve, resolveBatch };
 })();

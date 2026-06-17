@@ -37,6 +37,11 @@
       maxZoom: 12,
     }).addTo(map);
     layer = L.layerGroup().addTo(map);
+    map.on('popupopen', e => {
+      const node = e.popup.getElement();
+      const link = node && node.querySelector('.more-info');
+      if (link) link.addEventListener('click', ev => { ev.preventDefault(); App.openFlight(link.dataset.cs); });
+    });
   }
 
   function icon(track, onGround) {
@@ -53,7 +58,8 @@
     const spd = a.gs ? Math.round(a.gs) + ' kt' : '';
     return '<b>' + (a.flight || a.hex) + '</b>' +
       (a.type ? ' &middot; ' + a.type : '') + '<br>' + alt +
-      (spd ? '<br>' + spd : '') + (a.reg ? '<br>' + a.reg : '');
+      (spd ? '<br>' + spd : '') + (a.reg ? '<br>' + a.reg : '') +
+      (a.flight ? '<br><a href="#" class="more-info" data-cs="' + a.flight + '">More info →</a>' : '');
   }
 
   // Advance a lat/lon by ground speed (kt) along a track (deg) for dt seconds.
@@ -109,8 +115,7 @@
       const [lat, lon] = deadReckon(a, (now - a.base) / 1000);
       if (!a.marker) {
         a.marker = L.marker([lat, lon], { icon: icon(a.track, a.alt === 'ground') });
-        if (a.flight) a.marker.on('click', () => App.openFlight(a.flight));
-        else a.marker.bindPopup(popup(a));
+        a.marker.bindPopup(popup(a));
         layer.addLayer(a.marker);
       } else {
         a.marker.setLatLng([lat, lon]);

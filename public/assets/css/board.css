@@ -167,14 +167,25 @@ body {
   min-width: 9rem;
 }
 .controls button.go {
-  background: var(--green);
+  background: var(--amber);
   border: none;
-  color: #04210f;
+  color: #1a1300;
   font-weight: 700;
   padding: 0.5rem 1rem;
   letter-spacing: 0.1em;
   cursor: pointer;
+  border-radius: 3px;
 }
+
+/* Track view: centre the search vertically on the page */
+[data-view="track"]:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 72vh;
+}
+[data-view="track"] #track-result { width: 100%; }
 
 main { flex: 1; padding: 0 0.5rem 2rem; }
 
@@ -192,7 +203,8 @@ main { flex: 1; padding: 0 0.5rem 2rem; }
 /* Widths in rem (not em) so the small-font header lines up with the rows. */
 .col-time   { width: 4.7rem;  flex: none; }
 .col-flight { width: 6.6rem;  flex: none; }
-.col-dest   { flex: 1 1 auto; min-width: 12rem; overflow: hidden; }
+.col-dest   { flex: 1 1 auto; min-width: 10rem; overflow: hidden; }
+.col-alt    { width: 5rem;    flex: none; }
 .col-status { width: 8.4rem;  flex: none; }
 .col-star   { width: 1.8rem;  flex: none; text-align: center; }
 
@@ -345,7 +357,8 @@ main { flex: 1; padding: 0 0.5rem 2rem; }
 #radar-count { color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0.1em; font-size: 0.8rem; }
 .radar-src { margin-left: auto; color: var(--ink-dim); font-size: 0.65rem; letter-spacing: 0.08em; }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #15181c; color: var(--ink); }
-.leaflet-popup-content { font-family: "Courier New", monospace; }
+.leaflet-popup-content { font-family: Menlo, "Roboto Mono", ui-monospace, monospace; }
+.leaflet-popup-content .more-info { color: var(--amber); font-weight: 700; }
 
 /* ---------- Install hint ---------- */
 .install-hint {
@@ -391,8 +404,10 @@ body.home-active .tabs { display: none; }
 .fp-head { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; }
 .fp-num { color: var(--amber); font-weight: 800; letter-spacing: 0.1em; font-size: 1.6rem; }
 .fp-status { font-weight: 700; letter-spacing: 0.08em; }
+.fp-airline { color: var(--ink-dim); letter-spacing: 0.06em; margin-top: 0.2rem; }
 .fp-route { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.6rem; align-items: center;
   margin: 0.8rem 0; font-family: Menlo, "Roboto Mono", ui-monospace, monospace; }
+.fp-times { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin: 0.6rem 0; }
 .fp-ap { text-align: center; }
 .fp-ap .code { font-size: 2rem; font-weight: 800; color: var(--ink); }
 .fp-ap .city { font-size: 0.72rem; color: var(--ink-dim); letter-spacing: 0.08em; }
@@ -416,6 +431,7 @@ body.home-active .tabs { display: none; }
   .board-head, .board-row { gap: 0.35rem; padding-left: 0.4rem; padding-right: 0.4rem; }
   .col-time   { width: 4.1rem; }
   .col-flight { width: 5.7rem; }
-  .col-dest   { min-width: 9rem; }
+  .col-dest   { min-width: 7rem; }
+  .col-alt    { width: 4.2rem; }
   .col-status { width: 7.3rem; }
 }
