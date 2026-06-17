@@ -174,6 +174,14 @@
     };
   }
 
+  const eqCode = (a, b) => !!a && !!b && String(a).toUpperCase() === String(b).toUpperCase();
+  const sameAp = (a, b) => eqCode(a && a.iata, b && b.iata) || eqCode(a && a.icao, b && b.icao);
+  // Does a looked-up route describe the same physical hop the board showed?
+  function routeMatches(i, hint) {
+    return i && i.from && i.to && hint &&
+      sameAp(i.from, hint.from) && sameAp(i.to, hint.to);
+  }
+
   async function load() {
     const num = App.flight; cs = num;
     const hint = App.flightHint;
@@ -181,12 +189,21 @@
     skeleton(num);
     const i = await Flights.lookup(num);
     if (cs !== num) return;
-    // Keep the page consistent with the board: if the lookup fell back to free
-    // community data (no authoritative AeroDataBox), trust the route the board
-    // already resolved for this exact aircraft.
-    if (hint && i.source !== 'adb') {
-      i.from = mergeAp(i.from, hint.from);
-      i.to = mergeAp(i.to, hint.to);
+    // When opened from the board, the board's route is the physical aircraft the
+    // user tapped. AeroDataBox (looked up by flight number) can land on a
+    // different leg/codeshare, so it's only trusted to enrich (times, gate) when
+    // its route AGREES with the board. If it disagrees — or we're on free data —
+    // we keep the board's route so the page can never show a different flight.
+    if (hint) {
+      if (i.source === 'adb' && routeMatches(i, hint)) {
+        i.from = mergeAp(i.from, hint.from);   // keep ADB times, board identity
+        i.to = mergeAp(i.to, hint.to);
+      } else {
+        i.from = mergeAp(null, hint.from);     // board route only (no stray times)
+        i.to = mergeAp(null, hint.to);
+        i.approx = i.source === 'adb' ? true : i.approx;
+        if (i.source === 'adb') i.source = 'free';
+      }
     }
     info = i;
     render(num, i);
