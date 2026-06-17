@@ -1,7 +1,7 @@
 {
-  "name": "PHL Departures Board",
-  "short_name": "Departures",
-  "description": "Split-flap flight board for Philadelphia International (PHL).",
+  "name": "KMH Flights",
+  "short_name": "KMH Flights",
+  "description": "Split-flap flight board and live radar — pick any airport.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

@@ -13,7 +13,7 @@
   --red:       #ff5a52;
   --line:      #000;
   --tile-h:    1.5em;
-  --tile-w:    0.9em;
+  --tile-w:    0.78em;
   --flip-ms:   30ms;
   font-size: 16px;
 }
@@ -36,45 +36,79 @@ body {
   flex-direction: column;
 }
 
-/* ---------- Top bar ---------- */
+/* ---------- Brand header ---------- */
+.brandbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1rem;
+  background: linear-gradient(#1c1e23, #0c0d10);
+  border-bottom: 2px solid #000;
+}
+.brandbar .logo { width: 34px; height: 34px; flex: none; display: block; }
+.brandbar .brandname {
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  font-size: 1.25rem;
+  color: var(--ink);
+}
+.brandbar .brandname b { color: var(--amber); font-weight: 800; }
+
+/* ---------- Controls bar (airport + clock + status) ---------- */
 .topbar {
   display: flex;
-  align-items: baseline;
-  gap: 1rem;
-  padding: 0.7rem 1rem 0.5rem;
-  background: linear-gradient(#16181c, #0d0e10);
-  border-bottom: 2px solid #000;
+  align-items: center;
+  gap: 0.7rem 1rem;
+  padding: 0.5rem 1rem;
+  background: #0d0e10;
+  border-bottom: 1px solid #000;
   flex-wrap: wrap;
 }
-.topbar .brand {
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: var(--amber);
-  font-size: 1.15rem;
-}
-.topbar .sub { color: var(--ink-dim); letter-spacing: 0.2em; font-size: 0.7rem; }
-.airport-select {
-  background: var(--tile);
-  color: var(--amber);
-  border: 1px solid #000;
-  border-radius: 3px;
-  font: inherit;
+.current-airport {
   font-weight: 800;
   letter-spacing: 0.08em;
-  padding: 0.3rem 0.5rem;
-  max-width: 14rem;
-  cursor: pointer;
+  color: var(--amber);
+  font-size: 1rem;
+  white-space: nowrap;
 }
-.airport-select:focus { outline: 1px solid var(--amber); }
 .topbar .clock {
-  margin-left: auto;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--ink);
 }
-.topbar .updated { color: var(--ink-dim); font-size: 0.65rem; letter-spacing: 0.1em; }
+.topbar .updated { color: var(--ink-dim); font-size: 0.65rem; letter-spacing: 0.1em; white-space: nowrap; }
 .topbar .updated.stale { color: var(--amber); }
+
+/* airport search */
+.airport-search { position: relative; flex: 1 1 12rem; min-width: 11rem; max-width: 24rem; order: 5; }
+.airport-search input {
+  width: 100%;
+  background: var(--tile);
+  color: var(--ink);
+  border: 1px solid #000;
+  border-radius: 4px;
+  padding: 0.45rem 0.7rem;
+  font: inherit;
+  letter-spacing: 0.05em;
+}
+.airport-search input::placeholder { color: #7a7d83; }
+#airport-results {
+  position: absolute; left: 0; right: 0; top: 100%;
+  margin: 2px 0 0; padding: 0; list-style: none;
+  background: #15181c; border: 1px solid #000; border-radius: 0 0 6px 6px;
+  max-height: 60vh; overflow: auto; z-index: 30;
+  box-shadow: 0 10px 28px rgba(0,0,0,.55);
+}
+#airport-results li {
+  padding: 0.55rem 0.7rem; cursor: pointer; border-bottom: 1px solid #1e2126;
+  display: flex; gap: 0.6rem; align-items: baseline;
+}
+#airport-results li.active, #airport-results li:hover { background: #23272e; }
+#airport-results .iata { color: var(--amber); font-weight: 800; width: 3em; flex: none; }
+#airport-results .nm { color: var(--ink); }
+#airport-results .ct { color: var(--ink-dim); font-size: 0.8em; margin-left: auto; white-space: nowrap; }
+#airport-results.hidden { display: none; }
 
 /* ---------- Tabs ---------- */
 .tabs {
@@ -140,19 +174,32 @@ body {
 
 main { flex: 1; padding: 0 0.5rem 2rem; }
 
-/* ---------- Board ---------- */
-.board { width: 100%; max-width: 1000px; margin: 0 auto; }
+/* ---------- Board ----------
+   Header and rows are flex with identical fixed column widths so they always
+   line up. Widths are sized to the split-flap fields and fit a portrait iPad. */
+.board { width: max-content; max-width: 100%; margin: 0 auto; }
 .board-head, .board-row {
-  display: grid;
-  grid-template-columns: 4.5em 7em 1fr 3.5em 8em 1.6em;
-  gap: 0.5rem;
+  display: flex;
+  gap: 0.45rem;
   align-items: center;
-  padding: 0.28rem 0.6rem;
+  padding: 0.3rem 0.4rem;
 }
+.col-time   { width: 4.8em;  flex: none; }
+.col-flight { width: 6.6em;  flex: none; }
+.col-dest   { width: 13.9em; flex: none; overflow: hidden; }
+.col-status { width: 8.4em;  flex: none; }
+.col-star   { width: 1.6em;  flex: none; text-align: center; }
+
+/* status colours applied to the flap tiles themselves */
+.col-status.status-ontime   .sf-ch { color: var(--green); }
+.col-status.status-boarding  .sf-ch { color: var(--amber); }
+.col-status.status-delayed   .sf-ch,
+.col-status.status-cancelled .sf-ch { color: var(--red); }
+
 .board-head {
   color: var(--amber);
-  font-size: 0.62rem;
-  letter-spacing: 0.2em;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   border-bottom: 1px solid #2a2d33;
   position: sticky;
@@ -165,12 +212,10 @@ main { flex: 1; padding: 0 0.5rem 2rem; }
   cursor: pointer;
   color: #4a4d53;
   font-size: 1.1rem;
-  text-align: center;
   user-select: none;
 }
 .board-row .star.on { color: var(--amber); }
-
-.col-status .sf-field { --status-color: var(--ink); }
+.sf-field { flex-wrap: nowrap; }
 
 /* ---------- Split-flap field & tiles ---------- */
 .sf-field {
@@ -309,8 +354,13 @@ main { flex: 1; padding: 0 0.5rem 2rem; }
 
 .hidden { display: none !important; }
 
-@media (max-width: 560px) {
-  :root { --tile-w: 0.78em; font-size: 14px; }
-  .board-head, .board-row { grid-template-columns: 3.4em 5.4em 1fr 2.6em 5.6em 1.4em; gap: 0.3rem; }
-  .col-airline, .board-head .col-airline { display: none; }
+/* Narrow phones: shrink tiles a touch so the board still fits. */
+/* Narrow phones: shrink tiles a touch so the board still fits. */
+@media (max-width: 430px) {
+  :root { --tile-w: 0.68em; }
+  .board-head, .board-row { gap: 0.3rem; }
+  .col-time   { width: 4.3em; }
+  .col-flight { width: 5.9em; }
+  .col-dest   { width: 12.4em; }
+  .col-status { width: 7.5em; }
 }

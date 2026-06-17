@@ -98,25 +98,104 @@
   }
   tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
 
-  // ---- Airport picker ----
-  function buildPicker() {
-    const sel = document.getElementById('airport-select');
-    if (!sel) return;
-    sel.innerHTML = airports.map(a =>
-      '<option value="' + a.icao + '">' + a.iata + ' — ' + a.name + '</option>').join('');
-    sel.addEventListener('change', () => setAirport(sel.value));
+  // ---- Airport selection + search ----
+  const chip = document.getElementById('current-airport');
+  const searchInput = document.getElementById('airport-search');
+  const resultsEl = document.getElementById('airport-results');
+  let fullDb = null;        // lazily-loaded full airport dataset
+  let fullLoading = null;
+
+  function setAirport(ap, opts) {
+    if (!ap || ap.lat == null) return;
+    current = ap;
+    App.airport = current;
+    try { localStorage.setItem(AIRPORT_KEY, JSON.stringify(current)); } catch (_) {}
+    if (chip) chip.textContent = (current.iata ? current.iata + ' — ' : '') + current.name;
+    document.title = 'KMH Flights — ' + (current.iata || current.icao || '');
+    if (!(opts && opts.silent)) show(currentView);   // refresh the active view
   }
 
-  function setAirport(icao, opts) {
-    const next = airports.find(a => a.icao === icao) || airports[0];
-    if (!next) return;
-    current = next;
-    App.airport = current;
-    localStorage.setItem(AIRPORT_KEY, current.icao);
-    const sel = document.getElementById('airport-select');
-    if (sel && sel.value !== current.icao) sel.value = current.icao;
-    document.title = current.iata + ' Flights';
-    if (!(opts && opts.silent)) show(currentView);   // refresh the active view
+  const lc = s => (s == null ? '' : String(s)).toLowerCase();
+
+  function searchAirports(q) {
+    q = lc(q).trim();
+    if (!q) return [];
+    const src = fullDb || airports;
+    const exact = [], starts = [], contains = [];
+    for (const a of src) {
+      const iata = lc(a.iata), icao = lc(a.icao), name = lc(a.name), city = lc(a.city);
+      if (iata === q || icao === q) exact.push(a);
+      else if (iata.startsWith(q) || icao.startsWith(q) || name.startsWith(q) || city.startsWith(q)) starts.push(a);
+      else if (name.includes(q) || city.includes(q)) contains.push(a);
+      if (exact.length + starts.length + contains.length > 60) break;
+    }
+    return exact.concat(starts, contains).slice(0, 8);
+  }
+
+  function renderResults(list) {
+    if (!list.length) { resultsEl.classList.add('hidden'); resultsEl.innerHTML = ''; return; }
+    resultsEl.innerHTML = list.map((a, i) =>
+      '<li data-i="' + i + '"' + (i === 0 ? ' class="active"' : '') + '>' +
+        '<span class="iata">' + (a.iata || a.icao || '') + '</span>' +
+        '<span class="nm">' + (a.name || '') + '</span>' +
+        '<span class="ct">' + (a.country || '') + '</span></li>').join('');
+    resultsEl.classList.remove('hidden');
+    resultsEl._list = list;
+  }
+
+  function pick(a) {
+    if (!a) return;
+    setAirport(a);
+    searchInput.value = '';
+    searchInput.blur();
+    resultsEl.classList.add('hidden');
+  }
+
+  // Lazy-load a full worldwide airport list so any airport is searchable.
+  // Falls back silently to the bundled curated list if it can't be fetched.
+  function loadFullDb() {
+    if (fullDb || fullLoading) return fullLoading;
+    fullLoading = fetch('https://cdn.jsdelivr.net/gh/mwgg/Airports@master/airports.json', { cache: 'force-cache' })
+      .then(r => r.json())
+      .then(obj => {
+        const arr = [];
+        for (const k in obj) {
+          const a = obj[k];
+          if (a && a.lat != null && a.lon != null && a.iata) {
+            arr.push({ icao: a.icao || k, iata: a.iata,
+                       name: (a.city || a.name || '').toUpperCase(),
+                       city: a.city, country: a.country, lat: a.lat, lon: a.lon });
+          }
+        }
+        fullDb = arr;
+      })
+      .catch(() => {});
+    return fullLoading;
+  }
+
+  function wireSearch() {
+    if (!searchInput) return;
+    let activeIdx = 0;
+    searchInput.addEventListener('focus', loadFullDb);
+    searchInput.addEventListener('input', () => { activeIdx = 0; renderResults(searchAirports(searchInput.value)); });
+    searchInput.addEventListener('keydown', e => {
+      const items = resultsEl.querySelectorAll('li');
+      if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (resultsEl._list) pick(resultsEl._list[activeIdx]); return; }
+      else if (e.key === 'Escape') { resultsEl.classList.add('hidden'); return; }
+      else return;
+      items.forEach((li, i) => li.classList.toggle('active', i === activeIdx));
+    });
+    resultsEl.addEventListener('mousedown', e => {
+      const li = e.target.closest('li');
+      if (!li || !resultsEl._list) return;
+      e.preventDefault();
+      pick(resultsEl._list[+li.dataset.i]);
+    });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.airport-search')) resultsEl.classList.add('hidden');
+    });
   }
 
   // ---- Live clock ----
@@ -154,11 +233,12 @@
       airports = [{ icao: 'KPHL', iata: 'PHL', name: 'PHILADELPHIA', lat: 39.8729, lon: -75.2437 }];
     }
     App.airports = airports;
-    buildPicker();
+    wireSearch();
 
-    const saved = localStorage.getItem(AIRPORT_KEY);
-    const initial = airports.find(a => a.icao === saved) || airports[0];
-    setAirport(initial.icao, { silent: true });
+    let initial = null;
+    try { const s = JSON.parse(localStorage.getItem(AIRPORT_KEY)); if (s && s.lat != null) initial = s; } catch (_) {}
+    if (!initial) initial = airports.find(a => a.icao === 'KPHL') || airports[0];
+    setAirport(initial, { silent: true });
 
     const start = (location.hash || '#board').slice(1);
     show(['board', 'track', 'tracked', 'map'].includes(start) ? start : 'board');

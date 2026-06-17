@@ -33,7 +33,7 @@ function icon(string $path, int $size, string $font, bool $maskable): void
         $size - $pad, (int)($size / 2) + max(1, $size / 256), $line);
 
     // "PHL" text in amber, centred.
-    $text = 'PHL';
+    $text = 'KMH';
     $fs = $size * 0.30;
     $box = imagettfbbox($fs, 0, $font, $text);
     $tw = $box[2] - $box[0];

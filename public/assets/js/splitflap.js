@@ -61,12 +61,13 @@
       this.backCh.textContent = ch;
     }
 
-    set(target) {
+    set(target, immediate) {
       target = normChar(target);
       this.queueTarget = target;
       if (this.current === target) return;
-      if (reduceMotion) {
+      if (immediate || reduceMotion) {
         this.current = target;
+        this.animating = false;
         this._paint(target);
         return;
       }
@@ -127,10 +128,10 @@
         host.appendChild(c.el);
       }
     }
-    set(text) {
+    set(text, immediate) {
       text = (text == null ? '' : String(text)).toUpperCase();
       for (let i = 0; i < this.width; i++) {
-        this.cells[i].set(text[i] || ' ');
+        this.cells[i].set(text[i] || ' ', immediate);
       }
     }
   }

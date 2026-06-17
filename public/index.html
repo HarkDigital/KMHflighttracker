@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>PHL Departures</title>
+  <title>KMH Flights</title>
 
   <!-- PWA / iOS -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0a0b0d">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Departures">
+  <meta name="apple-mobile-web-app-title" content="KMH Flights">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
   <link rel="icon" href="assets/icons/icon-192.png">
 
@@ -19,12 +19,24 @@
 </head>
 <body>
 
-  <header class="topbar">
-    <span class="brand">✈</span>
-    <select id="airport-select" class="airport-select" aria-label="Select airport"></select>
+  <header class="brandbar">
+    <svg class="logo" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="24" cy="24" r="23" fill="#0c0d10" stroke="#f5b301" stroke-width="2"/>
+      <path fill="#f5b301" d="M40 23.2 27.4 23.2 19.6 10.5 16.2 10.5 20 23.2 12.4 23.2 9.6 19.4 7.2 19.4 9 24 7.2 28.6 9.6 28.6 12.4 24.8 20 24.8 16.2 37.5 19.6 37.5 27.4 24.8 40 24.8 41.2 24 Z"/>
+    </svg>
+    <span class="brandname">KMH&nbsp;<b>FLIGHTS</b></span>
+  </header>
+
+  <div class="topbar">
+    <span class="current-airport" id="current-airport">—</span>
     <span class="clock">--:--:--</span>
     <span class="updated">UPDATED —</span>
-  </header>
+    <div class="airport-search">
+      <input id="airport-search" type="text" placeholder="Search airport — city or code…"
+             autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Search airport">
+      <ul id="airport-results" class="hidden"></ul>
+    </div>
+  </div>
 
   <nav class="tabs">
     <button data-tab="board" class="active">Board</button>
@@ -53,7 +65,6 @@
           <div class="col-time">Time</div>
           <div class="col-flight">Flight</div>
           <div class="col-dest">Destination</div>
-          <div class="col-gate">Gate</div>
           <div class="col-status">Status</div>
           <div class="col-star">★</div>
         </div>
