@@ -1,12 +1,14 @@
 /**
- * board.js — live arrivals/departures board from free keyless feeds (ADS-B near
- * the selected airport + adsb.lol routeset for routes). Aircraft in the terminal
- * area are classified as arriving/departing from altitude + climb/descent.
+ * board.js — live arrivals/departures board from free keyless feeds.
+ *
+ * Accuracy approach: gather aircraft in the airport's terminal area, look up
+ * each one's route (adsb.lol routeset, batched), then decide direction from the
+ * ROUTE — if this airport is the route origin it's a departure (show the
+ * destination); if it's the destination it's an arrival (show the origin);
+ * otherwise it's an overflight / bad data and is dropped. This avoids the
+ * climb/descent guessing that produced wrong directions and "to same airport".
  *
  * Columns: TIME | FLIGHT | DESTINATION/ORIGIN | ALT | STATUS | ★
- * Tapping a row opens the flight page. Only flights with a known route are shown
- * (private/GA is filtered out). The last board is cached per airport so revisits
- * paint instantly while fresh data loads.
  */
 (function () {
   'use strict';
@@ -14,11 +16,11 @@
   const COLS = [
     { key: 'time',   w: 5,  cls: 'col-time' },
     { key: 'flight', w: 7,  cls: 'col-flight' },
-    { key: 'place',  w: 15, cls: 'col-dest' },
+    { key: 'place',  w: 18, cls: 'col-dest' },
     { key: 'alt',    w: 6,  cls: 'col-alt' },
     { key: 'status', w: 9,  cls: 'col-status' },
   ];
-  const RADIUS_NM = 80;
+  const RADIUS_NM = 90;
   const MAX_ROWS = 14;
 
   const listEl    = document.getElementById('board-list');
@@ -41,16 +43,9 @@
       Math.cos(toRad(la1)) * Math.cos(toRad(la2)) * Math.sin(dLon / 2) ** 2;
     return 2 * R * Math.asin(Math.sqrt(a));
   }
-  function bearing(la1, lo1, la2, lo2) {
-    const y = Math.sin(toRad(lo2 - lo1)) * Math.cos(toRad(la2));
-    const x = Math.cos(toRad(la1)) * Math.sin(toRad(la2)) -
-      Math.sin(toRad(la1)) * Math.cos(toRad(la2)) * Math.cos(toRad(lo2 - lo1));
-    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-  }
   const pad = n => String(n).padStart(2, '0');
-  function hhmm(date) { return pad(date.getHours()) + ':' + pad(date.getMinutes()); }
+  const hhmm = d => pad(d.getHours()) + ':' + pad(d.getMinutes());
 
-  // ---- per-airport board cache (stale-while-revalidate) ----
   const cacheKey = icao => 'kmh.board.' + icao + '.' + type;
   function saveCache(icao, rows) { try { localStorage.setItem(cacheKey(icao), JSON.stringify({ t: Date.now(), rows })); } catch (_) {} }
   function loadCache(icao) {
@@ -106,50 +101,47 @@
     });
   }
 
-  function classify(list, ap) {
+  // Aircraft in the terminal area (no direction yet).
+  function candidatesNear(list, ap) {
     const rows = [];
     for (const a of list) {
       if (!a.callsign) continue;
-      if (/^N\d/.test(a.callsign)) continue;   // skip US private/GA tail-number callsigns
+      if (/^N\d/.test(a.callsign)) continue;          // skip US private/GA
       const alt = a.alt === 'ground' ? 0 : (typeof a.alt === 'number' ? a.alt : null);
-      if (alt === null || alt > 20000) continue;
+      if (alt === null || alt > 20000) continue;       // terminal area only
       const dist = haversineNm(ap.lat, ap.lon, a.lat, a.lon);
-      let kind = null;
-      if (a.baroRate > 250 && dist < 60) kind = 'departures';
-      else if (a.baroRate < -250 && dist < 80) kind = 'arrivals';
-      else if (Math.abs(a.baroRate) <= 250 && alt < 8000 && dist < 25) {
-        const diff = Math.abs(((a.track - bearing(a.lat, a.lon, ap.lat, ap.lon) + 540) % 360) - 180);
-        kind = diff < 90 ? 'arrivals' : 'departures';
-      }
-      if (kind !== type) continue;
-
-      let time = '';
-      if (type === 'arrivals') { if (a.gs > 40) time = hhmm(new Date(Date.now() + dist / a.gs * 3600000)); }
-      else { if (!seenClock.has(a.callsign)) seenClock.set(a.callsign, hhmm(new Date())); time = seenClock.get(a.callsign); }
-
+      if (dist > RADIUS_NM) continue;
       rows.push({
         callsign: a.callsign, flight: a.callsign, reg: a.reg, aircraft: a.type,
-        dist, time, status: type === 'arrivals' ? 'ARRIVING' : 'DEPARTING',
+        dist, gs: a.gs, lat: a.lat, lon: a.lon,
         alt: a.alt === 'ground' ? 'GND' : String(Math.round(alt / 100) * 100),
-        lat: a.lat, lon: a.lon, place: '', placeIata: '', hasRoute: false,
+        place: '', placeIata: '', dir: null, time: '',
       });
     }
     rows.sort((x, y) => x.dist - y.dist);
-    return rows.slice(0, 24);
+    return rows.slice(0, 40);
   }
 
-  async function enrich(rows) {
+  function apMatch(rapt, ap) {
+    if (!rapt) return false;
+    const i = (rapt.iata || '').toUpperCase(), c = (rapt.icao || '').toUpperCase();
+    return (i && i === (ap.iata || '').toUpperCase()) || (c && c === (ap.icao || '').toUpperCase());
+  }
+
+  // Resolve routes and assign direction relative to the selected airport.
+  async function assignRoutes(rows, ap) {
     const map = await Adsbdb.resolveBatch(rows.map(r => ({ callsign: r.callsign, lat: r.lat, lon: r.lon })));
     rows.forEach(row => {
       const rt = map[(row.callsign || '').toUpperCase()];
-      const apt = rt && (type === 'arrivals' ? rt.origin : rt.destination);
-      if (apt) {
-        row.place = (apt.city || apt.name || apt.iata || '').toUpperCase();
-        row.placeIata = (apt.iata || '').toUpperCase();
-        row.hasRoute = true;
-      }
+      if (!rt || !rt.origin || !rt.destination) return;
+      const oM = apMatch(rt.origin, ap), dM = apMatch(rt.destination, ap);
+      let other = null;
+      if (oM && !dM) { row.dir = 'departures'; other = rt.destination; }
+      else if (dM && !oM) { row.dir = 'arrivals'; other = rt.origin; }
+      else return;   // route doesn't clearly involve this airport
+      row.place = (other.city || other.name || other.iata || '').toUpperCase();
+      row.placeIata = (other.iata || '').toUpperCase();
     });
-    rows.sort((x, y) => (x.hasRoute === y.hasRoute) ? x.dist - y.dist : (x.hasRoute ? -1 : 1));
   }
 
   async function poll() {
@@ -160,34 +152,32 @@
     let showed = false;
     if (firstPaint) {
       const cached = loadCache(ap.icao);
-      if (cached && cached.length) {
-        render(cached, true); showed = true;
-        if (updatedEl) updatedEl.textContent = 'LIVE • ' + cached.length + ' ' + type;
-      } else if (noteEl) {
-        noteEl.textContent = 'Loading live traffic near ' + ap.name + '…';
-        noteEl.classList.remove('hidden');
-      }
+      if (cached && cached.length) { render(cached, true); showed = true; if (updatedEl) updatedEl.textContent = 'LIVE • ' + cached.length + ' ' + type; }
+      else if (noteEl) { noteEl.textContent = 'Loading live traffic near ' + ap.name + '…'; noteEl.classList.remove('hidden'); }
     }
 
     const list = await Adsb.point(ap.lat, ap.lon, RADIUS_NM);
     if (list === null) { if (updatedEl) updatedEl.textContent = 'OFFLINE'; return; }
 
-    const immediate = firstPaint;
-    const candidates = classify(list, ap);
-    if (!showed) render(candidates, immediate);    // quick paint of flight numbers/times
-    await enrich(candidates);
-    const rows = candidates.filter(r => r.hasRoute).slice(0, MAX_ROWS);
-    if (!rows.length && noteEl) noteEl.textContent = 'No ' + type + ' with a known route near ' + ap.name + ' right now.';
-    render(rows, immediate);
-    saveCache(ap.icao, rows);
+    const cands = candidatesNear(list, ap);
+    await assignRoutes(cands, ap);
+    const rows = cands.filter(r => r.dir === type);
+    rows.forEach(r => {
+      if (type === 'arrivals') r.time = r.gs > 40 ? hhmm(new Date(Date.now() + r.dist / r.gs * 3600000)) : '';
+      else { if (!seenClock.has(r.callsign)) seenClock.set(r.callsign, hhmm(new Date())); r.time = seenClock.get(r.callsign); }
+      r.status = type === 'arrivals' ? 'ARRIVING' : 'DEPARTING';
+    });
+    rows.sort((x, y) => x.dist - y.dist);
+    const final = rows.slice(0, MAX_ROWS);
+
+    if (!final.length && noteEl) noteEl.textContent = 'No ' + type + ' near ' + ap.name + ' right now.';
+    render(final, firstPaint || !showed);
+    saveCache(ap.icao, final);
     firstPaint = false;
-    if (updatedEl) { updatedEl.textContent = 'LIVE • ' + rows.length + ' ' + type; updatedEl.classList.remove('stale'); }
+    if (updatedEl) { updatedEl.textContent = 'LIVE • ' + final.length + ' ' + type; updatedEl.classList.remove('stale'); }
   }
 
-  function reset() {
-    firstPaint = true;
-    while (rowPool.length) rowPool.pop().el.remove();
-  }
+  function reset() { firstPaint = true; while (rowPool.length) rowPool.pop().el.remove(); }
 
   seg.forEach(b => b.addEventListener('click', () => {
     seg.forEach(x => x.classList.remove('active'));

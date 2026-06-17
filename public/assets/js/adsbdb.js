@@ -36,8 +36,9 @@ window.Adsbdb = (function () {
   function apRouteset(o) {
     if (!o) return null;
     return { iata: o.iata || '', icao: o.icao || '',
-             name: o.name || '', city: o.location || '',
-             lat: o.lat, lon: o.lon };
+             name: o.name || '', city: o.location || o.name || '',
+             lat: (o.lat != null ? o.lat : o.latitude),
+             lon: (o.lon != null ? o.lon : o.longitude) };
   }
 
   async function cached(key, fetcher) {
