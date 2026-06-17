@@ -7,6 +7,34 @@
 
   const API = 'api';
 
+  // ---- Data source ----
+  // On a static host (e.g. GitHub Pages) there is no PHP backend, so we read
+  // prebuilt JSON from data/ (refreshed by a GitHub Actions workflow) and skip
+  // writes. On IONOS the PHP API under api/ is used. Auto-detected for
+  // *.github.io; override with  window.APP_CONFIG = { dataMode: 'static'|'php' }.
+  const isStatic = (window.APP_CONFIG && window.APP_CONFIG.dataMode)
+    ? window.APP_CONFIG.dataMode === 'static'
+    : /\.github\.io$/i.test(location.hostname);
+
+  function dataUrl(kind, arg) {
+    if (isStatic) {
+      if (kind === 'board')  return 'data/board_' + arg + '.json';
+      if (kind === 'flight') return 'data/flights/' + encodeURIComponent(arg) + '.json';
+      if (kind === 'states') return 'data/states.json';
+    }
+    if (kind === 'board')  return API + '/board.php?type=' + arg;
+    if (kind === 'flight') return API + '/flight.php?flight=' + encodeURIComponent(arg);
+    if (kind === 'states') return API + '/states.php';
+  }
+
+  // Age of a data payload in seconds (static files carry fetchedAt; the PHP
+  // API also returns a precomputed ageSeconds).
+  function computeAge(data) {
+    if (data && typeof data.ageSeconds === 'number') return data.ageSeconds;
+    if (data && data.fetchedAt) return Math.floor(Date.now() / 1000) - data.fetchedAt;
+    return null;
+  }
+
   // ---- Starred flights (persist on the device) ----
   const STAR_KEY = 'phl.starred';
   const Stars = {
@@ -18,7 +46,9 @@
     add(n) {
       const s = this.all();
       if (!s.includes(n)) { s.push(n); localStorage.setItem(STAR_KEY, JSON.stringify(s)); }
-      // Tell the server to keep this flight fresh after it leaves the board.
+      // On IONOS, tell the server to keep this flight fresh after it leaves the
+      // board. Static hosts have no write endpoint, so the star is local-only.
+      if (isStatic) return;
       fetch(API + '/watch.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,7 +106,7 @@
   }
 
   // Expose shared bits.
-  window.App = { API, Stars, statusClass, formatAge };
+  window.App = { API, isStatic, dataUrl, computeAge, Stars, statusClass, formatAge };
 
   function formatAge(seconds) {
     if (seconds == null) return '';

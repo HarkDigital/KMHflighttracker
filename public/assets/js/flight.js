@@ -59,7 +59,19 @@
     clearTimeout(pollTimer);
 
     try {
-      const res = await fetch(App.API + '/flight.php?flight=' + encodeURIComponent(num), { cache: 'no-store' });
+      const res = await fetch(App.dataUrl('flight', num), { cache: 'no-store' });
+      if (!res.ok) {
+        // Static host (GitHub Pages): only flights on the prebuilt board exist.
+        if (App.isStatic) {
+          App.Stars.add(num);
+          result.innerHTML = '<div class="empty">On this preview host, only flights currently ' +
+            'on the PHL board can be opened.<br>Starred <b>' + esc(num) +
+            '</b> — on-demand tracking works once it\'s on IONOS.</div>';
+        } else {
+          result.innerHTML = '<div class="empty">Could not reach the server.</div>';
+        }
+        return;
+      }
       const d = await res.json();
       if (d.state === 'pending') {
         // Queue it server-side and poll back shortly.

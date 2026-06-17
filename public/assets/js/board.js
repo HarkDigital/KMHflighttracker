@@ -78,11 +78,11 @@
 
   async function poll() {
     try {
-      const res = await fetch(App.API + '/board.php?type=' + type, { cache: 'no-store' });
+      const res = await fetch(App.dataUrl('board', type), { cache: 'no-store' });
       const data = await res.json();
       render(data.rows || []);
       if (updatedEl) {
-        updatedEl.textContent = 'UPDATED ' + App.formatAge(data.ageSeconds);
+        updatedEl.textContent = 'UPDATED ' + App.formatAge(App.computeAge(data));
         updatedEl.classList.toggle('stale', !!data.stale);
       }
     } catch (e) {

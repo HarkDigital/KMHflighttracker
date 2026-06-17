@@ -9,7 +9,7 @@
  *
  * Bump SW_VERSION on every deploy to invalidate the old shell cache.
  */
-const SW_VERSION = 'v1';
+const SW_VERSION = 'v2';
 const SHELL_CACHE = 'phl-shell-' + SW_VERSION;
 const API_CACHE   = 'phl-api-' + SW_VERSION;
 
@@ -19,6 +19,7 @@ const SHELL = [
   './offline.html',
   './manifest.json',
   './assets/css/board.css',
+  './assets/js/runtime-config.js',
   './assets/js/splitflap.js',
   './assets/js/app.js',
   './assets/js/board.js',
@@ -53,8 +54,9 @@ self.addEventListener('fetch', e => {
   // Only manage our own origin; let CDN/tiles go straight to network.
   if (url.origin !== self.location.origin) return;
 
-  // API: network-first (3s) -> cache.
-  if (url.pathname.includes('/api/')) {
+  // Dynamic JSON (PHP API on IONOS, or static data/ on Pages): network-first
+  // (3s) so the board stays fresh, falling back to the last cached copy offline.
+  if (url.pathname.includes('/api/') || url.pathname.includes('/data/')) {
     e.respondWith(networkFirst(req));
     return;
   }

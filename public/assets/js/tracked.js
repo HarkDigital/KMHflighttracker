@@ -52,7 +52,8 @@
     }
     const results = await Promise.all(stars.map(async n => {
       try {
-        const r = await fetch(App.API + '/flight.php?flight=' + encodeURIComponent(n), { cache: 'no-store' });
+        const r = await fetch(App.dataUrl('flight', n), { cache: 'no-store' });
+        if (!r.ok) return pending(n);
         const d = await r.json();
         return d.state === 'pending' ? pending(n) : card(d);
       } catch (_) { return pending(n); }

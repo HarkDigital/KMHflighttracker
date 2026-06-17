@@ -1,0 +1,99 @@
+name: Deploy to GitHub Pages
+
+# Refreshes the flight data and (re)deploys the static site to GitHub Pages.
+# This is the "cron" for static hosting — GitHub Actions runs the prefetch
+# that PHP cron would run on IONOS, then publishes public/.
+#
+# Setup (one time):
+#   1. Repo Settings → Pages → Build and deployment → Source: "GitHub Actions".
+#   2. (Optional) Settings → Secrets and variables → Actions → add:
+#        RAPIDAPI_KEY, OPENSKY_CLIENT_ID, OPENSKY_CLIENT_SECRET
+#      With no RAPIDAPI_KEY the site deploys in mock mode (sample data) so you
+#      can see it live immediately.
+#
+# NOTE: GitHub only runs the `schedule` trigger from the repository's DEFAULT
+# branch. Until this branch is merged, use "Run workflow" (workflow_dispatch)
+# or a push to refresh.
+
+on:
+  push:
+    branches: [ "claude/flight-tracking-apis-mka05q", "main" ]
+    paths-ignore: [ "README.md", "docs/**" ]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */3 * * *"   # every 3h — keeps AeroDataBox free tier (~600/mo) safe
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: curl, mbstring, json
+
+      - name: Write config from secrets (mock if no API key)
+        env:
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          OPENSKY_CLIENT_ID: ${{ secrets.OPENSKY_CLIENT_ID }}
+          OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
+        run: |
+          mkdir -p private/cache
+          MOCK=true
+          [ -n "$RAPIDAPI_KEY" ] && MOCK=false
+          cat > private/config.php <<PHP
+          <?php return [
+            'airport_icao'  => 'KPHL',
+            'airport_iata'  => 'PHL',
+            'airport_name'  => 'PHILADELPHIA',
+            'rapidapi_key'  => getenv('RAPIDAPI_KEY') ?: '',
+            'rapidapi_host' => 'aerodatabox.p.rapidapi.com',
+            'opensky_client_id'     => getenv('OPENSKY_CLIENT_ID') ?: '',
+            'opensky_client_secret' => getenv('OPENSKY_CLIENT_SECRET') ?: '',
+            'bbox' => ['lamin' => 39.4, 'lomin' => -75.9, 'lamax' => 40.3, 'lomax' => -74.6],
+            'cache_dir' => __DIR__ . '/cache',
+            'monthly_unit_budget' => 600,
+            'board_window_hours' => 8,
+            'mock' => $MOCK,
+          ];
+          PHP
+
+      - name: Export static data (the GitHub-Actions "cron")
+        env:
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          OPENSKY_CLIENT_ID: ${{ secrets.OPENSKY_CLIENT_ID }}
+          OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
+        run: php build/export_static.php
+
+      - name: Force static data mode for the deployed site
+        run: |
+          mkdir -p public/assets/js
+          echo "window.APP_CONFIG = { dataMode: 'static' };" > public/assets/js/runtime-config.js
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

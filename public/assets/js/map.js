@@ -32,7 +32,7 @@
     ensureMap();
     if (!map) return;
     try {
-      const res = await fetch(App.API + '/states.php', { cache: 'no-store' });
+      const res = await fetch(App.dataUrl('states'), { cache: 'no-store' });
       const data = await res.json();
 
       if (!map._fitted && data.bbox) {
