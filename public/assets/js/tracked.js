@@ -1,6 +1,7 @@
 /**
  * tracked.js — the "Tracked" tab. Shows every flight the user has starred
- * (stored on the device), each rendered as a live card from /api/flight.php.
+ * (stored on the device), each resolved live from the free keyless sources
+ * (adsbdb route + ADS-B live position). No API key.
  */
 (function () {
   'use strict';
@@ -12,34 +13,33 @@
     return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
+  function code(apt) { return esc(apt && (apt.iata || apt.icao) || '???'); }
 
-  function card(d) {
+  function card(num, rt, ac) {
+    const status = !ac ? 'NOT AIRBORNE' : (ac.alt === 'ground' ? 'ON GROUND' : 'EN ROUTE');
+    const from = rt && rt.origin, to = rt && rt.destination;
+    const aircraft = ac && ac.type ? ac.type : '';
+    const reg = ac && ac.reg ? ac.reg : '';
+    const alt = ac && typeof ac.alt === 'number' ? Math.round(ac.alt) + ' ft' : '';
     return `
-      <div class="flightcard" data-flight="${esc(d.flight)}">
+      <div class="flightcard" data-flight="${esc(num)}">
         <div class="fc-head">
-          <span class="fc-num">${esc(d.flight)}</span>
-          <span class="${App.statusClass(d.status)}">${esc(d.status || '…')}</span>
+          <span class="fc-num">${esc(num)}</span>
+          <span class="${App.statusClass(status)}">${status}</span>
           <span class="star on" title="Remove">★</span>
         </div>
         <div class="fc-route">
-          <div class="fc-ap"><div class="code">${esc(d.from && d.from.iata || '???')}</div>
-            <div class="time">${esc(d.from && (d.from.est || d.from.time) || '')}</div></div>
+          <div class="fc-ap"><div class="code">${code(from)}</div>
+            <div class="city">${esc(from ? (from.city || from.name) : '')}</div></div>
           <div class="fc-arrow">✈</div>
-          <div class="fc-ap"><div class="code">${esc(d.to && d.to.iata || '???')}</div>
-            <div class="time">${esc(d.to && (d.to.est || d.to.time) || '')}</div></div>
+          <div class="fc-ap"><div class="code">${code(to)}</div>
+            <div class="city">${esc(to ? (to.city || to.name) : '')}</div></div>
         </div>
         <div class="fc-meta">
-          ${d.aircraft ? 'Aircraft <b>' + esc(d.aircraft) + '</b>' : ''}
-          ${d.reg ? ' &middot; Reg <b>' + esc(d.reg) + '</b>' : ''}
+          ${aircraft ? 'Aircraft <b>' + esc(aircraft) + '</b>' : ''}
+          ${reg ? ' &middot; Reg <b>' + esc(reg) + '</b>' : ''}
+          ${alt ? ' &middot; <b>' + esc(alt) + '</b>' : ''}
         </div>
-      </div>`;
-  }
-
-  function pending(num) {
-    return `<div class="flightcard" data-flight="${esc(num)}">
-        <div class="fc-head"><span class="fc-num">${esc(num)}</span>
-          <span>FETCHING…</span><span class="star on" title="Remove">★</span></div>
-        <div class="fc-meta">Waiting for the next data refresh.</div>
       </div>`;
   }
 
@@ -50,19 +50,16 @@
         'Tap ☆ on the board or use the Track tab to follow a flight.</div>';
       return;
     }
-    const results = await Promise.all(stars.map(async n => {
+    const cards = await Promise.all(stars.map(async num => {
       try {
-        const r = await fetch(App.dataUrl('flight', n), { cache: 'no-store' });
-        if (!r.ok) return pending(n);
-        const d = await r.json();
-        return d.state === 'pending' ? pending(n) : card(d);
-      } catch (_) { return pending(n); }
+        const [rt, live] = await Promise.all([Adsbdb.route(num), Adsb.callsign(num)]);
+        return card(num, rt, live && live[0]);
+      } catch (_) { return card(num, null, null); }
     }));
-    wrap.innerHTML = results.join('');
+    wrap.innerHTML = cards.join('');
     wrap.querySelectorAll('.star').forEach(s => {
       s.addEventListener('click', () => {
-        const fc = s.closest('[data-flight]');
-        App.Stars.remove(fc.dataset.flight);
+        App.Stars.remove(s.closest('[data-flight]').dataset.flight);
         render();
       });
     });
@@ -73,7 +70,7 @@
     activate() {
       render();
       clearInterval(timer);
-      timer = setInterval(render, 60000);
+      timer = setInterval(render, 30000);
     },
   };
 })();

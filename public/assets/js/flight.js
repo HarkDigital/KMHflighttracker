@@ -1,7 +1,7 @@
 /**
- * flight.js — "Track a flight" view. Look up a flight number; show its route,
- * times, status and aircraft. If it isn't cached yet, it's queued server-side
- * and we poll until it's ready.
+ * flight.js — "Track a flight" view. Looks up a flight by its callsign using
+ * free, keyless sources: adsbdb (callsign -> route) and the ADS-B feed (live
+ * position/altitude/type if it's airborne right now). No API key.
  */
 (function () {
   'use strict';
@@ -9,36 +9,52 @@
   const input  = document.getElementById('track-input');
   const goBtn   = document.getElementById('track-go');
   const result = document.getElementById('track-result');
-  let pollTimer = null;
 
-  function card(d) {
-    const starred = App.Stars.has(d.flight);
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  function airportCode(apt, live) {
+    if (apt && (apt.iata || apt.icao)) return esc(apt.iata || apt.icao);
+    return '???';
+  }
+
+  function card(num, rt, ac) {
+    const starred = App.Stars.has(num);
+    const status = !ac ? 'NOT AIRBORNE'
+      : (ac.alt === 'ground' ? 'ON GROUND' : 'EN ROUTE');
+    const from = rt && rt.origin, to = rt && rt.destination;
+    const aircraft = ac && ac.type ? ac.type : '';
+    const reg = ac && ac.reg ? ac.reg : '';
+    const alt = ac && typeof ac.alt === 'number' ? Math.round(ac.alt) + ' ft' : '';
+    const spd = ac && ac.gs ? Math.round(ac.gs) + ' kt' : '';
+
     return `
       <div class="flightcard">
         <div class="fc-head">
-          <span class="fc-num">${esc(d.flight)}</span>
-          <span class="${App.statusClass(d.status)}">${esc(d.status || '')}</span>
+          <span class="fc-num">${esc(num)}</span>
+          <span class="${App.statusClass(status)}">${status}</span>
         </div>
         <div class="fc-route">
           <div class="fc-ap">
-            <div class="code">${esc(d.from.iata || '???')}</div>
-            <div class="city">${esc(d.from.name || '')}</div>
-            <div class="time">${esc(d.from.est || d.from.time || '')}</div>
+            <div class="code">${airportCode(from)}</div>
+            <div class="city">${esc(from ? (from.city || from.name) : '')}</div>
           </div>
           <div class="fc-arrow">✈</div>
           <div class="fc-ap">
-            <div class="code">${esc(d.to.iata || '???')}</div>
-            <div class="city">${esc(d.to.name || '')}</div>
-            <div class="time">${esc(d.to.est || d.to.time || '')}</div>
+            <div class="code">${airportCode(to)}</div>
+            <div class="city">${esc(to ? (to.city || to.name) : '')}</div>
           </div>
         </div>
         <div class="fc-meta">
-          ${d.airline ? '<b>' + esc(d.airline) + '</b> &middot; ' : ''}
-          ${d.aircraft ? 'Aircraft <b>' + esc(d.aircraft) + '</b> &middot; ' : ''}
-          ${d.reg ? 'Reg <b>' + esc(d.reg) + '</b>' : ''}
+          ${aircraft ? 'Aircraft <b>' + esc(aircraft) + '</b>' : ''}
+          ${reg ? ' &middot; Reg <b>' + esc(reg) + '</b>' : ''}
+          ${alt ? ' &middot; <b>' + esc(alt) + '</b>' : ''}
+          ${spd ? ' &middot; <b>' + esc(spd) + '</b>' : ''}
         </div>
         <div class="fc-meta">
-          <button class="go" data-star="${esc(d.flight)}">${starred ? '★ Tracked' : '☆ Track this flight'}</button>
+          <button class="go" data-star="${esc(num)}">${starred ? '★ Tracked' : '☆ Track this flight'}</button>
         </div>
       </div>`;
   }
@@ -56,41 +72,20 @@
     num = (num || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!num) return;
     result.innerHTML = '<div class="empty">Looking up ' + esc(num) + '…</div>';
-    clearTimeout(pollTimer);
 
     try {
-      const res = await fetch(App.dataUrl('flight', num), { cache: 'no-store' });
-      if (!res.ok) {
-        // Static host (GitHub Pages): only flights on the prebuilt board exist.
-        if (App.isStatic) {
-          App.Stars.add(num);
-          result.innerHTML = '<div class="empty">On this preview host, only flights currently ' +
-            'on the PHL board can be opened.<br>Starred <b>' + esc(num) +
-            '</b> — on-demand tracking works once it\'s on IONOS.</div>';
-        } else {
-          result.innerHTML = '<div class="empty">Could not reach the server.</div>';
-        }
+      const [rt, live] = await Promise.all([Adsbdb.route(num), Adsb.callsign(num)]);
+      const ac = live && live[0];
+      if (!rt && !ac) {
+        result.innerHTML = '<div class="empty">No data for <b>' + esc(num) +
+          '</b>.<br>It may not be flying right now — star it and check back when it\'s airborne.</div>';
         return;
       }
-      const d = await res.json();
-      if (d.state === 'pending') {
-        // Queue it server-side and poll back shortly.
-        App.Stars.add(num);   // also stars + adds to watchlist
-        result.innerHTML = '<div class="empty">Added <b>' + esc(num) +
-          '</b> to tracking — fetching its details… this can take a minute.</div>';
-        pollTimer = setTimeout(() => lookup(num), 15000);
-        return;
-      }
-      result.innerHTML = card(d);
+      result.innerHTML = card(num, rt, ac);
       wireStar();
     } catch (e) {
-      result.innerHTML = '<div class="empty">Could not reach the server.</div>';
+      result.innerHTML = '<div class="empty">Could not reach the flight data service.</div>';
     }
-  }
-
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
-      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
 
   goBtn.addEventListener('click', () => lookup(input.value));

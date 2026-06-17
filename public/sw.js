@@ -9,7 +9,7 @@
  *
  * Bump SW_VERSION on every deploy to invalidate the old shell cache.
  */
-const SW_VERSION = 'v4';
+const SW_VERSION = 'v5';
 const SHELL_CACHE = 'phl-shell-' + SW_VERSION;
 const API_CACHE   = 'phl-api-' + SW_VERSION;
 
@@ -22,6 +22,8 @@ const SHELL = [
   './assets/css/board.css',
   './assets/js/runtime-config.js',
   './assets/js/splitflap.js',
+  './assets/js/adsb.js',
+  './assets/js/adsbdb.js',
   './assets/js/app.js',
   './assets/js/board.js',
   './assets/js/flight.js',

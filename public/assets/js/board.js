@@ -1,6 +1,12 @@
 /**
- * board.js — the departures/arrivals split-flap board.
- * Polls /api/board.php, diffs rows, and flips only changed tiles.
+ * board.js — live "arrivals / departures" board built entirely from free,
+ * keyless sources: the ADS-B feed (aircraft near the selected airport) plus
+ * adsbdb (callsign -> route). No API key, no trial — works on GitHub Pages and
+ * IONOS alike. Aircraft in the terminal area are classified as arriving or
+ * departing from altitude + climb/descent, and rendered on the split-flap board.
+ *
+ * (On IONOS you can later layer OpenSky for a richer scheduled-style board; the
+ * data-source switch in app.js is where that would hook in.)
  */
 (function () {
   'use strict';
@@ -9,17 +15,44 @@
     { key: 'time',   w: 5,  cls: 'col-time' },
     { key: 'flight', w: 7,  cls: 'col-flight' },
     { key: 'place',  w: 16, cls: 'col-dest' },
-    { key: 'gate',   w: 4,  cls: 'col-gate' },
+    { key: 'gate',   w: 6,  cls: 'col-gate' },     // repurposed: altitude (ft)
     { key: 'status', w: 11, cls: 'col-status' },
   ];
+  const RADIUS_NM = 100;
+  const MAX_ROWS = 24;
 
   const listEl    = document.getElementById('board-list');
+  const noteEl    = document.getElementById('board-note');
   const updatedEl = document.querySelector('.topbar .updated');
+  const destHead  = document.querySelector('.board-head .col-dest');
+  const gateHead  = document.querySelector('.board-head .col-gate');
   const seg       = document.querySelectorAll('#board-controls .seg button');
 
   let type = 'departures';
   let timer = null;
-  const rowPool = [];   // reusable row objects { el, fields:{}, star, flight }
+  const rowPool = [];
+
+  if (gateHead) gateHead.textContent = 'Alt';
+
+  // ---- geo helpers ----
+  const toRad = d => d * Math.PI / 180;
+  function haversineNm(la1, lo1, la2, lo2) {
+    const R = 3440.065; // nm
+    const dLat = toRad(la2 - la1), dLon = toRad(lo2 - lo1);
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(la1)) * Math.cos(toRad(la2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+  function bearing(la1, lo1, la2, lo2) {
+    const y = Math.sin(toRad(lo2 - lo1)) * Math.cos(toRad(la2));
+    const x = Math.cos(toRad(la1)) * Math.sin(toRad(la2)) -
+      Math.sin(toRad(la1)) * Math.cos(toRad(la2)) * Math.cos(toRad(lo2 - lo1));
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+  function hhmm(date) {
+    const p = n => String(n).padStart(2, '0');
+    return p(date.getHours()) + ':' + p(date.getMinutes());
+  }
 
   function buildRow() {
     const el = document.createElement('div');
@@ -46,16 +79,12 @@
   }
 
   function render(rows) {
-    // Grow/shrink the pool to match.
+    if (noteEl) noteEl.classList.toggle('hidden', rows.length > 0);
     while (rowPool.length < rows.length) {
-      const r = buildRow();
-      rowPool.push(r);
-      listEl.appendChild(r.el);
+      const r = buildRow(); rowPool.push(r); listEl.appendChild(r.el);
     }
-    while (rowPool.length > rows.length) {
-      const r = rowPool.pop();
-      r.el.remove();
-    }
+    while (rowPool.length > rows.length) { rowPool.pop().el.remove(); }
+
     rows.forEach((row, i) => {
       const r = rowPool[i];
       COLS.forEach(c => {
@@ -64,10 +93,7 @@
           : row[c.key];
         r.fields[c.key].set(txt || '');
       });
-      // status colour
-      const statusEl = r.el.querySelector('.col-status');
-      statusEl.className = 'col-status ' + App.statusClass(row.status);
-      // star state
+      r.el.querySelector('.col-status').className = 'col-status ' + App.statusClass(row.status);
       const n = (row.flight || '').toUpperCase();
       r.star.dataset.flight = n;
       const on = App.Stars.has(n);
@@ -76,33 +102,67 @@
     });
   }
 
-  const noteEl = document.getElementById('board-note');
+  function classify(list, ap) {
+    const rows = [];
+    for (const a of list) {
+      if (!a.callsign) continue;
+      const alt = a.alt === 'ground' ? 0 : (typeof a.alt === 'number' ? a.alt : null);
+      if (alt === null || alt > 20000) continue;          // skip cruise overflights
+      const dist = haversineNm(ap.lat, ap.lon, a.lat, a.lon);
+      let kind = null;
+      if (a.baroRate > 250 && dist < 70) kind = 'departures';
+      else if (a.baroRate < -250 && dist < 100) kind = 'arrivals';
+      else if (Math.abs(a.baroRate) <= 250 && alt < 8000 && dist < 30) {
+        const diff = Math.abs(((a.track - bearing(a.lat, a.lon, ap.lat, ap.lon) + 540) % 360) - 180);
+        kind = diff < 90 ? 'arrivals' : 'departures';
+      }
+      if (kind !== type) continue;
 
-  function note(msg) {
-    while (rowPool.length) rowPool.pop().el.remove();
-    if (noteEl) { noteEl.textContent = msg; noteEl.classList.remove('hidden'); }
+      const etaMin = (type === 'arrivals' && a.gs > 40) ? dist / a.gs * 60 : null;
+      rows.push({
+        callsign: a.callsign, flight: a.callsign, reg: a.reg, aircraft: a.type,
+        dist, etaMin,
+        gate: alt ? String(Math.round(alt / 100) * 100) : 'GND',
+        time: etaMin != null ? hhmm(new Date(Date.now() + etaMin * 60000)) : '',
+        status: type === 'arrivals' ? 'ARRIVING' : 'DEPARTING',
+        place: '', placeIata: '',
+      });
+    }
+    rows.sort((x, y) => (x.etaMin ?? x.dist) - (y.etaMin ?? y.dist));
+    return rows.slice(0, MAX_ROWS);
+  }
+
+  async function enrich(rows) {
+    await Promise.all(rows.map(async row => {
+      const rt = await Adsbdb.route(row.callsign);
+      const apt = rt && (type === 'arrivals' ? rt.origin : rt.destination);
+      if (apt) {
+        row.place = (apt.city || apt.name || apt.iata || '').toUpperCase();
+        row.placeIata = (apt.iata || '').toUpperCase();
+      }
+    }));
   }
 
   async function poll() {
-    try {
-      const res = await fetch(App.dataUrl('board', type), { cache: 'no-store' });
-      if (!res.ok) { note('No board data yet for this airport.'); return; }
-      const data = await res.json();
+    const ap = App.airport;
+    if (!ap) return;
+    if (destHead) destHead.textContent = type === 'arrivals' ? 'Origin' : 'Destination';
 
-      if (data.boardsDisabled) {
-        note((data.airport || 'This airport') + ' is radar-only. Open the Map tab for live traffic.');
-        if (updatedEl) { updatedEl.textContent = ''; updatedEl.classList.remove('stale'); }
-        return;
-      }
-      if (noteEl) noteEl.classList.add('hidden');
-      render(data.rows || []);
-      if (updatedEl) {
-        updatedEl.textContent = data.mock ? 'SAMPLE DATA'
-          : 'UPDATED ' + App.formatAge(App.computeAge(data));
-        updatedEl.classList.toggle('stale', !!data.stale || !!data.mock);
-      }
-    } catch (e) {
+    const list = await Adsb.point(ap.lat, ap.lon, RADIUS_NM);
+    if (list === null) {                                  // both feeds unreachable
       if (updatedEl) updatedEl.textContent = 'OFFLINE';
+      return;
+    }
+    const rows = classify(list, ap);
+    if (!rows.length && noteEl) {
+      noteEl.textContent = 'No ' + type + ' near ' + ap.name + ' right now.';
+    }
+    render(rows);                                         // show immediately
+    await enrich(rows);                                   // then fill in routes
+    render(rows);
+    if (updatedEl) {
+      updatedEl.textContent = 'LIVE • ' + rows.length + ' ' + type;
+      updatedEl.classList.remove('stale');
     }
   }
 
@@ -110,7 +170,6 @@
     seg.forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     type = b.dataset.type;
-    // wipe rows so the new direction flips in cleanly
     while (rowPool.length) rowPool.pop().el.remove();
     poll();
   }));
@@ -119,7 +178,7 @@
   window.Views.board = {
     activate() {
       poll();
-      if (!timer) timer = setInterval(poll, 60000);  // refresh display every 60s
+      if (!timer) timer = setInterval(poll, 15000);
     },
   };
 })();

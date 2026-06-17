@@ -1,36 +1,38 @@
-# PHL Split-Flap Flight Tracker
+# Split-Flap Flight Tracker
 
-A retro **split-flap ("Solari board")** flight tracker for **Philadelphia
-International (PHL)**, built to run on **IONOS shared hosting** (PHP + cron) and
-install as a **PWA** on an iPad.
+A retro **split-flap ("Solari board")** multi-airport flight tracker with a live
+**radar**, designed to install as a **PWA** on an iPad. It runs as pure static
+files (e.g. GitHub Pages) and also on **IONOS shared hosting**.
 
 ![board](docs/board.png)
 
 ## Features
 
-- **Board** — live departures/arrivals on an animated flip-tile board.
-- **Track** — look up any flight by number (route, times, status, aircraft model).
-- **Tracked** — ★ flights you care about; they persist on the device and stay fresh.
-- **Map** — live aircraft positions around PHL (OpenStreetMap + OpenSky).
+- **Board** — live arrivals/departures near the selected airport on an animated flip-tile board.
+- **Track** — look up a flight by callsign (route + live status + aircraft type).
+- **Tracked** — ★ flights you care about; they persist on the device.
+- **Map** — FlightRadar24-style live radar that follows the selected airport.
+- **Airport picker** — switch airports (board + radar) from the header; editable list in `public/airports.json`.
 - Installable PWA with an offline app shell.
 
 ## How it works
 
-The browser **never** calls the flight APIs directly. Cron jobs prefetch data
-into a private cache; PHP endpoints serve only that cached JSON. This keeps API
-keys secret and decouples API-unit cost from page views.
+Everything is built **client-side from free, keyless feeds** — no API key, no
+account, no trial:
+
+- **ADS-B positions** — [adsb.lol](https://api.adsb.lol/docs) (primary) /
+  [airplanes.live](https://airplanes.live/api-guide/) (fallback). Powers the radar
+  and the live board (aircraft near the airport, classified as arriving/departing).
+- **Routes & aircraft type** — [adsbdb.com](https://github.com/mrjackwills/adsbdb)
+  (callsign → origin/destination; registration → type). Keyless, cached on-device.
 
 ```
-iPad PWA (static HTML/CSS/JS) ──► public/api/*.php ──► private/cache/*.json
-                                                          ▲
-Cron ──► cron/prefetch_*.php ──► AeroDataBox / OpenSky ───┘
+iPad PWA  ──fetch──►  adsb.lol / airplanes.live   (live positions)
+          ──fetch──►  adsbdb.com                  (routes + aircraft)
 ```
 
-### APIs (free tiers)
-- **AeroDataBox** (via RapidAPI) — board, flight-by-number, aircraft-by-registration.
-  Free tier ≈ 600 units/month; the airport board (FIDS) is the expensive call, so it
-  refreshes on a slow cadence.
-- **OpenSky Network** — live aircraft positions (OAuth2 client-credentials; free).
+The PHP backend (`public/api/*.php`, `cron/`) is **optional** and used only if you
+later add an OpenSky-account–backed board on IONOS for richer scheduled-style data.
 
 ## Local development
 

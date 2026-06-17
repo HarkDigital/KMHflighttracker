@@ -21,18 +21,13 @@
   const STALE_MS = 60000;      // drop aircraft not seen for this long
 
   let map = null, layer = null, apMarker = null, pollTimer = null, tickTimer = null;
-  let lastIcao = null, providerIdx = 0;
+  let lastIcao = null;
   const fleet = new Map();     // hex -> aircraft state + marker
 
   function center() {
     const a = App.airport;
     return (a && a.lat != null) ? [a.lat, a.lon] : [39.8729, -75.2437];
   }
-
-  const PROVIDERS = [
-    c => `https://api.adsb.lol/v2/point/${c[0]}/${c[1]}/${RADIUS_NM}`,
-    c => `https://api.airplanes.live/v2/point/${c[0]}/${c[1]}/${RADIUS_NM}`,
-  ];
 
   function ensureMap() {
     if (map || typeof L === 'undefined') return;
@@ -78,32 +73,24 @@
 
   async function fetchFleet() {
     if (!map) return;
-    const url = PROVIDERS[providerIdx](center());
-    let data;
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error('http ' + res.status);
-      data = await res.json();
-    } catch (e) {
-      providerIdx = (providerIdx + 1) % PROVIDERS.length;   // try the other feed next time
-      return;
-    }
+    const c = center();
+    const list = await Adsb.point(c[0], c[1], RADIUS_NM);
+    if (list === null) return;                            // both feeds unreachable
 
     const now = Date.now();
-    (data.ac || data.aircraft || []).forEach(raw => {
-      if (raw.lat == null || raw.lon == null) return;
-      const hex = raw.hex || raw.r || (raw.flight || '').trim();
+    list.forEach(raw => {
+      const hex = raw.hex;
       if (!hex) return;
       let a = fleet.get(hex);
       if (!a) { a = { hex }; fleet.set(hex, a); }
       a.lat = raw.lat;
       a.lon = raw.lon;
-      a.track = raw.track ?? raw.true_heading ?? a.track ?? 0;
-      a.gs = raw.gs ?? 0;
-      a.alt = raw.alt_baro;
-      a.flight = (raw.flight || '').trim();
-      a.type = raw.t || '';
-      a.reg = raw.r || '';
+      a.track = raw.track || 0;
+      a.gs = raw.gs || 0;
+      a.alt = raw.alt;
+      a.flight = raw.callsign;
+      a.type = raw.type;
+      a.reg = raw.reg;
       a.seen = now;
       a.base = now;
     });

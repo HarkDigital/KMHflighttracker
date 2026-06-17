@@ -72,8 +72,8 @@
     const t = (text || '').toUpperCase();
     if (/CANCEL|DIVERT/.test(t)) return 'status-cancelled';
     if (/DELAY/.test(t)) return 'status-delayed';
-    if (/BOARD|DEPART|LAND|GATE/.test(t)) return 'status-boarding';
-    if (/ON TIME|EN ROUTE|EXPECT|APPROACH/.test(t)) return 'status-ontime';
+    if (/BOARD|DEPART|LAND|GATE|GROUND/.test(t)) return 'status-boarding';
+    if (/ON TIME|EN ROUTE|EXPECT|APPROACH|ARRIV/.test(t)) return 'status-ontime';
     return '';
   }
 
