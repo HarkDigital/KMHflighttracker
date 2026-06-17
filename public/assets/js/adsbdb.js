@@ -122,23 +122,36 @@ window.Adsbdb = (function () {
       need.push({ cs, lat: p.lat, lng: p.lon });
     }
     if (need.length) {
+      // 1) Try adsb.lol routeset (batched, position-aware) — map by the callsign
+      //    in each result (the API may reorder / omit unknowns).
+      let results = [];
       try {
         const res = await fetch('https://api.adsb.lol/api/0/routeset', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ planes: need.map(n => ({ callsign: n.cs, lat: n.lat, lng: n.lng })) }),
         });
-        const j = res.ok ? await res.json() : [];
-        (Array.isArray(j) ? j : []).forEach((r, i) => {
-          const cs = need[i] && need[i].cs;
-          if (!cs) return;
-          const aps = r && r._airports;
-          const route = (r && r.plausible && Array.isArray(aps) && aps.length >= 2)
-            ? { origin: apRouteset(aps[0]), destination: apRouteset(aps[aps.length - 1]), approx: false } : null;
-          mem.set('rt.' + cs, route); lsSet('rt.' + cs, route); out[cs] = route;
-        });
+        if (res.ok) { const j = await res.json(); if (Array.isArray(j)) results = j; }
       } catch (_) {}
-      // mark any still-unknown as null so we don't refetch every poll
-      need.forEach(n => { if (out[n.cs] === undefined) { out[n.cs] = null; mem.set('rt.' + n.cs, null); } });
+      const byCs = {};
+      results.forEach(r => {
+        if (!r || !r.callsign) return;
+        const aps = r._airports;
+        byCs[r.callsign.toUpperCase()] = (r.plausible && Array.isArray(aps) && aps.length >= 2)
+          ? { origin: apRouteset(aps[0]), destination: apRouteset(aps[aps.length - 1]), approx: false } : null;
+      });
+      const fallback = [];
+      for (const n of need) {
+        const r = byCs[n.cs];
+        if (r) { mem.set('rt.' + n.cs, r); lsSet('rt.' + n.cs, r); out[n.cs] = r; }
+        else fallback.push(n.cs);
+      }
+      // 2) Fall back to adsbdb (GET, reliable) for anything routeset didn't return.
+      await Promise.all(fallback.slice(0, 30).map(async cs => {
+        let r = null;
+        try { const a = await route(cs); if (a) r = { origin: a.origin, destination: a.destination, approx: true }; } catch (_) {}
+        mem.set('rt.' + cs, r); lsSet('rt.' + cs, r); out[cs] = r;
+      }));
+      fallback.slice(30).forEach(cs => { out[cs] = null; });
     }
     return out;
   }
