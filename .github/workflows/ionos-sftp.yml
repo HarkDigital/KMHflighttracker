@@ -1,0 +1,53 @@
+name: Deploy to IONOS (SFTP)
+
+# Uploads the static site (public/) to your IONOS webspace on every commit.
+# The app is fully static + client-side, so there is nothing else to deploy.
+#
+# One-time setup — add these in the repo:
+#   Settings → Secrets and variables → Actions → New repository secret
+#     IONOS_SFTP_SERVER    your IONOS SFTP host (e.g. accessXXXX.webspace-data.io)
+#     IONOS_SFTP_USERNAME  your SFTP/FTP username (from the IONOS panel)
+#     IONOS_SFTP_PASSWORD  that user's password
+#     IONOS_REMOTE_DIR     target document-root path (e.g. /  or  /yourdomain.com)
+#
+# Find the SFTP host/username (and enable SSH/SFTP if needed) in the IONOS panel
+# under your hosting package → "SFTP & SSH" / webspace access. Until the secrets
+# are set, this workflow runs as a no-op (green).
+
+on:
+  push:
+    branches: [ "claude/flight-tracking-apis-mka05q", "main" ]
+    paths-ignore: [ "README.md", "docs/**" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ionos-sftp
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SERVER: ${{ secrets.IONOS_SFTP_SERVER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Run the app in static mode (no PHP backend on this host).
+      - name: Pin static data mode
+        run: echo "window.APP_CONFIG = { dataMode: 'static' };" > public/assets/js/runtime-config.js
+
+      - name: Upload public/ to IONOS via SFTP
+        if: env.SERVER != ''
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server:      ${{ secrets.IONOS_SFTP_SERVER }}
+          username:    ${{ secrets.IONOS_SFTP_USERNAME }}
+          password:    ${{ secrets.IONOS_SFTP_PASSWORD }}
+          port:        22
+          local_path:  './public/*'
+          remote_path: ${{ secrets.IONOS_REMOTE_DIR }}
+          sftp_only:   true
+
+      - name: Note when not configured
+        if: env.SERVER == ''
+        run: echo "IONOS_SFTP_* secrets not set yet — skipping upload. Add them in repo Settings → Secrets."
