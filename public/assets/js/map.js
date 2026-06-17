@@ -37,11 +37,6 @@
       maxZoom: 12,
     }).addTo(map);
     layer = L.layerGroup().addTo(map);
-    map.on('popupopen', e => {
-      const node = e.popup.getElement();
-      const link = node && node.querySelector('.more-info');
-      if (link) link.addEventListener('click', ev => { ev.preventDefault(); App.openFlight(link.dataset.cs); });
-    });
   }
 
   function icon(track, onGround) {
@@ -59,7 +54,8 @@
     return '<b>' + (a.flight || a.hex) + '</b>' +
       (a.type ? ' &middot; ' + a.type : '') + '<br>' + alt +
       (spd ? '<br>' + spd : '') + (a.reg ? '<br>' + a.reg : '') +
-      (a.flight ? '<br><a href="#" class="more-info" data-cs="' + a.flight + '">More info →</a>' : '');
+      (a.flight ? '<br><a href="#" class="more-info" onclick="window.App.openFlight(\'' +
+        a.flight + '\');return false;">More info →</a>' : '');
   }
 
   // Advance a lat/lon by ground speed (kt) along a track (deg) for dt seconds.
