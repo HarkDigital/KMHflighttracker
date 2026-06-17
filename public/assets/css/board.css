@@ -397,6 +397,14 @@ main {
 .radar-title { color: var(--amber); font-weight: 800; letter-spacing: 0.18em; font-size: 0.8rem; }
 #radar-count { color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0.1em; font-size: 0.8rem; }
 .radar-src { margin-left: auto; color: var(--ink-dim); font-size: 0.65rem; letter-spacing: 0.08em; }
+/* Make the map attribution unobtrusive: no white box, faint gray text. */
+.leaflet-control-attribution {
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #5a5d63 !important;
+  font-size: 9px;
+}
+.leaflet-control-attribution a { color: #5a5d63 !important; text-decoration: none; }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #15181c; color: var(--ink); }
 .leaflet-popup-content { font-family: Menlo, "Roboto Mono", ui-monospace, monospace; }
 .leaflet-popup-content .more-info { color: var(--amber); font-weight: 700; }

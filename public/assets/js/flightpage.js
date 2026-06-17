@@ -130,8 +130,9 @@
     if (!window.L || !mapEl) return;
     if (map) { map.remove(); map = null; }
     map = L.map(mapEl, { zoomControl: true });
+    map.attributionControl.setPrefix(false);   // drop the "Leaflet" link
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      { attribution: '&copy; OSM &copy; CARTO', maxZoom: 11 }).addTo(map);
+      { attribution: 'OSM · CARTO', maxZoom: 11 }).addTo(map);
     layer = L.layerGroup().addTo(map);
     draw(i, true);
     setTimeout(() => { if (map) map.invalidateSize(); }, 80);

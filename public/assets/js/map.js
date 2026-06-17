@@ -32,8 +32,9 @@
   function ensureMap() {
     if (map || typeof L === 'undefined') return;
     map = L.map('map', { zoomControl: true, attributionControl: true });
+    map.attributionControl.setPrefix(false);   // drop the "Leaflet" link
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO &middot; ADS-B: adsb.lol',
+      attribution: 'OSM · CARTO',
       maxZoom: 12,
     }).addTo(map);
     layer = L.layerGroup().addTo(map);
