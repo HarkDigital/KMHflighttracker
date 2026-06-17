@@ -36,7 +36,9 @@ if (!is_file($cfgPath)) {
 $cfg  = require $cfgPath;
 $key  = $cfg['aerodatabox_key']  ?? '';
 $host = $cfg['aerodatabox_host'] ?? 'aerodatabox.p.rapidapi.com';
-$ttl  = (int)($cfg['cache_ttl']  ?? 900);
+$ttl  = (int)($cfg['cache_ttl']  ?? 300);
+$budget   = (int)($cfg['monthly_unit_budget'] ?? 540);   // free Basic = 600; leave margin
+$unitCost = (int)($cfg['unit_cost'] ?? 2);               // flight-by-number = Tier 2
 if ($key === '' || $key === 'YOUR_RAPIDAPI_KEY') {
     out(['state' => 'error', 'reason' => 'not_configured'], 200);
 }
@@ -63,6 +65,33 @@ if (is_file($cacheFile)) {
     }
 }
 
+// ---- Monthly unit budget ----
+// AeroDataBox free Basic is 600 units/mo; each flight-by-number call is ~2.
+// We track usage per calendar month and hard-stop (serving the last cached
+// copy, however stale) once we'd exceed the budget — so we can run a fresh
+// cache_ttl without any risk of blowing the free quota.
+$usageFile = $cacheDir . '/usage.json';
+$month = gmdate('Y-m');
+$usage = ['month' => $month, 'units' => 0];
+if (is_file($usageFile)) {
+    $u = json_decode(file_get_contents($usageFile), true);
+    if (is_array($u) && ($u['month'] ?? '') === $month) $usage = $u;
+}
+function serveStaleOrError($cacheFile, $reason) {
+    if (is_file($cacheFile)) {
+        $cached = json_decode(file_get_contents($cacheFile), true);
+        if (is_array($cached)) {
+            $cached['stale'] = true;
+            $cached['ageSeconds'] = time() - filemtime($cacheFile);
+            out($cached);
+        }
+    }
+    out(['state' => 'error', 'reason' => $reason], 200);
+}
+if (((int)$usage['units'] + $unitCost) > $budget) {
+    serveStaleOrError($cacheFile, 'budget');
+}
+
 // ---- Call AeroDataBox (Tier-2 flight status, ~2 units) ----
 $url = 'https://' . $host . '/flights/number/' . rawurlencode($flight)
      . '?withAircraftImage=false&withLocation=true';
@@ -82,17 +111,17 @@ $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $err  = curl_error($ch);
 curl_close($ch);
 
+// The request reached RapidAPI (any HTTP status) -> it counts against the
+// monthly quota. Record it before we branch on the result.
+if ($body !== false && $code > 0) {
+    $usage['units'] = (int)$usage['units'] + $unitCost;
+    $tmpU = $usageFile . '.' . getmypid() . '.tmp';
+    if (@file_put_contents($tmpU, json_encode($usage)) !== false) { @rename($tmpU, $usageFile); }
+}
+
 // On upstream trouble, serve a stale cache if we have one rather than failing.
 if ($body === false || $code >= 400) {
-    if (is_file($cacheFile)) {
-        $cached = json_decode(file_get_contents($cacheFile), true);
-        if (is_array($cached)) {
-            $cached['stale'] = true;
-            $cached['ageSeconds'] = time() - filemtime($cacheFile);
-            out($cached);
-        }
-    }
-    out(['state' => 'error', 'reason' => 'upstream', 'code' => $code, 'detail' => $err], 200);
+    serveStaleOrError($cacheFile, 'upstream');
 }
 
 $data = json_decode($body, true);
@@ -100,19 +129,34 @@ if (!is_array($data) || !count($data)) {
     out(['state' => 'error', 'reason' => 'not_found'], 200);
 }
 
-// ---- Pick the most relevant leg ----
-// AeroDataBox returns one entry per recent/upcoming operation of this number.
-// Prefer an active flight (EnRoute/Departed), else the soonest scheduled.
+// ---- Pick the leg that is happening now ----
+// AeroDataBox returns one entry per recent/upcoming operation of this number
+// (which can include yesterday's and tomorrow's). Prefer an active flight
+// (EnRoute/Departed); otherwise break ties by whichever leg's scheduled
+// departure is closest to the current time, so we never show the wrong day's
+// or the return leg.
 function legRank($f) {
     $s = strtolower($f['status'] ?? '');
     if (strpos($s, 'enroute') !== false || strpos($s, 'en route') !== false) return 0;
     if (strpos($s, 'departed') !== false || strpos($s, 'airborne') !== false) return 0;
     if (strpos($s, 'boarding') !== false || strpos($s, 'expected') !== false) return 1;
     if (strpos($s, 'scheduled') !== false) return 2;
-    if (strpos($s, 'arrived') !== false || strpos($s, 'landed') !== false) return 3;
-    return 4;
+    if (strpos($s, 'arrived') !== false || strpos($s, 'landed') !== false) return 4;
+    return 3;
 }
-usort($data, function ($a, $b) { return legRank($a) - legRank($b); });
+function legWhen($f) {
+    $t = $f['departure']['scheduledTime']['utc']
+       ?? ($f['departure']['revisedTime']['utc']
+       ?? ($f['arrival']['scheduledTime']['utc'] ?? ''));
+    $ts = $t ? strtotime($t) : 0;
+    return $ts ? abs($ts - time()) : PHP_INT_MAX;
+}
+usort($data, function ($a, $b) {
+    $r = legRank($a) - legRank($b);
+    if ($r !== 0) return $r;
+    $d = legWhen($a) - legWhen($b);
+    return ($d < 0) ? -1 : (($d > 0) ? 1 : 0);
+});
 $f = $data[0];
 
 // ---- Normalize ----

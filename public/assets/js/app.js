@@ -142,13 +142,16 @@
   // Open the flight detail page for a callsign.
   let flightTarget = null;
   let returnView = 'home';
-  function openFlight(cs) {
+  function openFlight(cs, hint) {
     cs = (cs || '').trim().toUpperCase();
     if (window.Airlines) cs = Airlines.toCallsign(cs);   // DL2092 -> DAL2092
     if (!cs) return;
     if (currentView !== 'flight') returnView = currentView;
     flightTarget = cs;
     App.flight = cs;
+    // A caller (e.g. the board) can pass the route it already resolved so the
+    // detail page shows exactly the flight that was tapped, with no flicker.
+    App.flightHint = (hint && hint.from && hint.to) ? hint : null;
     location.hash = 'flight/' + cs;
     show('flight');
   }
@@ -297,7 +300,7 @@
   // Expose shared bits (airport is set during init()).
   window.App = { API, isStatic, dataUrl, computeAge, Stars, statusClass, formatAge,
                  loadLeaflet, openFlight, closeFlight, show, flightApi,
-                 airport: null, airports: [], flight: null };
+                 airport: null, airports: [], flight: null, flightHint: null };
 
   // ---- Init: load the airport list, then start ----
   (async function init() {

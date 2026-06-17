@@ -55,6 +55,8 @@
 
   window.Views = window.Views || {};
   window.Views.tracked = {
-    activate() { render(); clearInterval(timer); timer = setInterval(render, 30000); },
+    // Status/route change slowly and each refresh can cost an API unit, so poll
+    // gently (5 min). The per-flight page still updates live position every 15s.
+    activate() { render(); clearInterval(timer); timer = setInterval(render, 300000); },
   };
 })();

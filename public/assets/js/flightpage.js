@@ -160,12 +160,34 @@
     else if (fit) map.setView([39.87, -75.24], 4);
   }
 
+  // Overlay a board-supplied airport onto a looked-up one, preferring the board's
+  // identity/coords but keeping any scheduled times/gate the lookup found.
+  function mergeAp(base, hint) {
+    base = base || {}; hint = hint || {};
+    return {
+      iata: hint.iata || base.iata || '', icao: hint.icao || base.icao || '',
+      city: hint.city || base.city || '', name: hint.name || base.name || '',
+      lat: hint.lat != null ? hint.lat : base.lat,
+      lon: hint.lon != null ? hint.lon : base.lon,
+      scheduled: base.scheduled || '', estimated: base.estimated || '',
+      gate: base.gate || '', terminal: base.terminal || '',
+    };
+  }
+
   async function load() {
     const num = App.flight; cs = num;
+    const hint = App.flightHint;
     if (!num) { el.innerHTML = '<div class="empty">No flight selected.</div>'; return; }
     skeleton(num);
     const i = await Flights.lookup(num);
     if (cs !== num) return;
+    // Keep the page consistent with the board: if the lookup fell back to free
+    // community data (no authoritative AeroDataBox), trust the route the board
+    // already resolved for this exact aircraft.
+    if (hint && i.source !== 'adb') {
+      i.from = mergeAp(i.from, hint.from);
+      i.to = mergeAp(i.to, hint.to);
+    }
     info = i;
     render(num, i);
   }

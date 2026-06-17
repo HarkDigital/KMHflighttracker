@@ -53,7 +53,9 @@ jobs:
             echo "return ["
             echo "    'aerodatabox_key'  => '${ADB_KEY}',"
             echo "    'aerodatabox_host' => 'aerodatabox.p.rapidapi.com',"
-            echo "    'cache_ttl'        => 900,"
+            echo "    'cache_ttl'        => 300,"
+            echo "    'monthly_unit_budget' => 540,"
+            echo "    'unit_cost'           => 2,"
             echo "];"
           } > public/api/config.php
 

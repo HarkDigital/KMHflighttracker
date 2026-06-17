@@ -80,7 +80,7 @@
       star.textContent = on ? '★' : '☆';
     });
     el.appendChild(star);
-    el.addEventListener('click', () => { if (el.dataset.flight) App.openFlight(el.dataset.flight); });
+    el.addEventListener('click', () => { if (el.dataset.flight) App.openFlight(el.dataset.flight, el._hint); });
     return { el, fields, star };
   }
 
@@ -97,6 +97,9 @@
         r.fields[c.key].set(txt || '', immediate);
       });
       r.el.querySelector('.col-status').className = 'col-status ' + App.statusClass(row.status);
+      // Carry the route we resolved into the detail page so the tapped flight
+      // and the page it opens always agree.
+      r.el._hint = (row.from && row.to) ? { from: row.from, to: row.to, status: row.status } : null;
       const n = (row.flight || '').toUpperCase();
       r.el.dataset.flight = n;
       r.star.dataset.flight = n;
@@ -160,6 +163,12 @@
         row.place = (other.city || other.name || other.iata || '').toUpperCase();
         row.placeIata = (other.iata || '').toUpperCase();
         row.hasRoute = true;
+        // Full origin/destination for the detail page. "Here" is this airport;
+        // the other endpoint is what the route lookup gave us.
+        const here = { iata: ap.iata || '', icao: ap.icao || '', city: ap.name || '',
+                       name: ap.name || '', lat: ap.lat, lon: ap.lon };
+        if (type === 'arrivals') { row.from = other; row.to = here; }
+        else { row.from = here; row.to = other; }
       }
     });
     rows.sort((x, y) => (x.hasRoute === y.hasRoute) ? x.dist - y.dist : (x.hasRoute ? -1 : 1));
