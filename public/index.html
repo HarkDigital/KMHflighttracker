@@ -40,7 +40,7 @@
 
   <nav class="tabs">
     <button data-tab="board"><span class="tico" aria-hidden="true">🛫</span><span class="tlbl">Board</span></button>
-    <button data-tab="track"><span class="tico" aria-hidden="true">🔎</span><span class="tlbl">Track</span></button>
+    <button data-tab="track"><span class="tico" aria-hidden="true">🔎</span><span class="tlbl">Search</span></button>
     <button data-tab="tracked"><span class="tico" aria-hidden="true">★</span><span class="tlbl">Tracked</span></button>
     <button data-tab="radar"><span class="tico" aria-hidden="true">📡</span><span class="tlbl">Radar</span></button>
   </nav>
@@ -56,7 +56,7 @@
     <section data-view="home" class="hidden">
       <nav class="home">
         <a href="#board"   data-home="board"><span class="ico">🛫</span>Board<span class="sub">Departures &amp; arrivals</span></a>
-        <a href="#track"   data-home="track"><span class="ico">🔎</span>Track<span class="sub">Look up a flight</span></a>
+        <a href="#track"   data-home="track"><span class="ico">🔎</span>Search<span class="sub">Look up a flight</span></a>
         <a href="#tracked" data-home="tracked"><span class="ico">★</span>Tracked<span class="sub">Your starred flights</span></a>
         <a href="#radar"   data-home="radar"><span class="ico">📡</span>Radar<span class="sub">Live map</span></a>
       </nav>
@@ -93,7 +93,7 @@
     <section data-view="track" class="hidden">
       <div class="controls">
         <input type="text" id="track-input" placeholder="FLIGHT e.g. AA1234" autocapitalize="characters" autocomplete="off">
-        <button class="go" id="track-go">Track</button>
+        <button class="go" id="track-go">Search</button>
       </div>
       <div class="panel" id="track-result">
         <div class="empty">Enter a flight number to see its route, times and aircraft.</div>

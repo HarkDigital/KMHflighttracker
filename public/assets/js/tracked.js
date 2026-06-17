@@ -37,7 +37,7 @@
     const stars = App.Stars.all();
     if (!stars.length) {
       wrap.innerHTML = '<div class="empty">No tracked flights yet.<br>' +
-        'Tap ☆ on the board or use the Track tab to follow a flight.</div>';
+        'Tap ☆ on the board or use the Search tab to follow a flight.</div>';
       return;
     }
     const cards = await Promise.all(stars.map(async num => {
