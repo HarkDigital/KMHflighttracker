@@ -181,18 +181,20 @@ main { flex: 1; padding: 0 0.5rem 2rem; }
 /* ---------- Board ----------
    Header and rows are flex with identical fixed column widths so they always
    line up. Widths are sized to the split-flap fields and fit a portrait iPad. */
-.board { width: max-content; max-width: 100%; margin: 0 auto; }
+.board { width: 100%; margin: 0; }
 .board-head, .board-row {
   display: flex;
-  gap: 0.45rem;
+  width: 100%;
+  gap: 0.6rem;
   align-items: center;
-  padding: 0.3rem 0.4rem;
+  padding: 0.32rem 0.6rem;
 }
-.col-time   { width: 4.8em;  flex: none; }
-.col-flight { width: 6.6em;  flex: none; }
-.col-dest   { width: 13.9em; flex: none; overflow: hidden; }
-.col-status { width: 8.4em;  flex: none; }
-.col-star   { width: 1.6em;  flex: none; text-align: center; }
+/* Widths in rem (not em) so the small-font header lines up with the rows. */
+.col-time   { width: 4.7rem;  flex: none; }
+.col-flight { width: 6.6rem;  flex: none; }
+.col-dest   { flex: 1 1 auto; min-width: 12rem; overflow: hidden; }
+.col-status { width: 8.4rem;  flex: none; }
+.col-star   { width: 1.8rem;  flex: none; text-align: center; }
 
 /* status colours applied to the flap tiles themselves */
 .col-status.status-ontime   .sf-ch { color: var(--green); }
@@ -411,9 +413,9 @@ body.home-active .tabs { display: none; }
 /* Narrow phones: shrink tiles a touch so the board still fits. */
 @media (max-width: 430px) {
   :root { --tile-w: 0.68em; }
-  .board-head, .board-row { gap: 0.3rem; }
-  .col-time   { width: 4.3em; }
-  .col-flight { width: 5.9em; }
-  .col-dest   { width: 12.4em; }
-  .col-status { width: 7.5em; }
+  .board-head, .board-row { gap: 0.35rem; padding-left: 0.4rem; padding-right: 0.4rem; }
+  .col-time   { width: 4.1rem; }
+  .col-flight { width: 5.7rem; }
+  .col-dest   { min-width: 9rem; }
+  .col-status { width: 7.3rem; }
 }

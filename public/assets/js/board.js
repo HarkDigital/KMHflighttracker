@@ -104,6 +104,7 @@
     const rows = [];
     for (const a of list) {
       if (!a.callsign) continue;
+      if (/^N\d/.test(a.callsign)) continue;   // skip US private/GA (tail-number callsigns)
       const alt = a.alt === 'ground' ? 0 : (typeof a.alt === 'number' ? a.alt : null);
       if (alt === null || alt > 20000) continue;
       const dist = haversineNm(ap.lat, ap.lon, a.lat, a.lon);
@@ -130,7 +131,7 @@
       });
     }
     rows.sort((x, y) => x.dist - y.dist);
-    return rows.slice(0, MAX_ROWS);
+    return rows.slice(0, 24);   // candidates; trimmed to MAX_ROWS after route lookup
   }
 
   async function enrich(rows) {
@@ -158,12 +159,14 @@
       return;
     }
     const immediate = firstPaint;
-    const rows = classify(list, ap);
+    const candidates = classify(list, ap);
+    render(candidates, immediate);             // quick first paint
+    await enrich(candidates);
+    // Keep only flights with a known destination (drops GA / unrouted traffic).
+    const rows = candidates.filter(r => r.hasRoute).slice(0, MAX_ROWS);
     if (!rows.length && noteEl) {
-      noteEl.textContent = 'No ' + type + ' near ' + ap.name + ' right now.';
+      noteEl.textContent = 'No ' + type + ' with a known route near ' + ap.name + ' right now.';
     }
-    render(rows, immediate);
-    await enrich(rows);
     render(rows, immediate);
     firstPaint = false;
     if (updatedEl) {
