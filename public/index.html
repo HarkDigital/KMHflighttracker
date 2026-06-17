@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PHL Departures</title>
+
+  <!-- PWA / iOS -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0b0d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Departures">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <link rel="icon" href="assets/icons/icon-192.png">
+
+  <link rel="stylesheet" href="assets/css/board.css">
+  <!-- Leaflet (live map) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <span class="brand">✈ PHL</span>
+    <span class="sub">PHILADELPHIA</span>
+    <span class="clock">--:--:--</span>
+    <span class="updated">UPDATED —</span>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="board" class="active">Board</button>
+    <button data-tab="track">Track</button>
+    <button data-tab="tracked">Tracked</button>
+    <button data-tab="map">Map</button>
+  </nav>
+
+  <div class="install-hint">
+    <span class="close">✕</span>
+    <b>Install on the iPad:</b> tap the Share button, then
+    <b>Add to Home Screen</b> for a full-screen board.
+  </div>
+
+  <main>
+    <!-- BOARD -->
+    <section data-view="board">
+      <div class="controls" id="board-controls">
+        <div class="seg">
+          <button data-type="departures" class="active">Departures</button>
+          <button data-type="arrivals">Arrivals</button>
+        </div>
+      </div>
+      <div class="board">
+        <div class="board-head">
+          <div class="col-time">Time</div>
+          <div class="col-flight">Flight</div>
+          <div class="col-dest">Destination</div>
+          <div class="col-gate">Gate</div>
+          <div class="col-status">Status</div>
+          <div class="col-star">★</div>
+        </div>
+        <div id="board-list"></div>
+      </div>
+    </section>
+
+    <!-- TRACK -->
+    <section data-view="track" class="hidden">
+      <div class="controls">
+        <input type="text" id="track-input" placeholder="FLIGHT e.g. AA1234" autocapitalize="characters" autocomplete="off">
+        <button class="go" id="track-go">Track</button>
+      </div>
+      <div class="panel" id="track-result">
+        <div class="empty">Enter a flight number to see its route, times and aircraft.</div>
+      </div>
+    </section>
+
+    <!-- TRACKED -->
+    <section data-view="tracked" class="hidden">
+      <div class="panel" id="tracked-list"></div>
+    </section>
+
+    <!-- MAP -->
+    <section data-view="map" class="hidden">
+      <div id="map"></div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="assets/js/splitflap.js"></script>
+  <script src="assets/js/board.js"></script>
+  <script src="assets/js/flight.js"></script>
+  <script src="assets/js/tracked.js"></script>
+  <script src="assets/js/map.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/sw-register.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+[
+  {
+    "number": "AA1234",
+    "status": "EnRoute",
+    "airline": { "name": "American Airlines" },
+    "aircraft": { "reg": "N801AA", "model": "Airbus A321-200" },
+    "departure": {
+      "airport": { "iata": "PHL", "municipalityName": "Philadelphia", "name": "Philadelphia" },
+      "scheduledTime": { "local": "2026-06-17 14:05-04:00" },
+      "revisedTime": { "local": "2026-06-17 14:18-04:00" },
+      "terminal": "B",
+      "gate": "B12"
+    },
+    "arrival": {
+      "airport": { "iata": "LAX", "municipalityName": "Los Angeles", "name": "Los Angeles" },
+      "scheduledTime": { "local": "2026-06-17 17:35-07:00" },
+      "terminal": "4",
+      "gate": "44"
+    }
+  }
+]

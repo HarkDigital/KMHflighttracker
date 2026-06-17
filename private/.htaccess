@@ -1,0 +1,9 @@
+# Hard deny: this directory holds secrets + cache and must never be served.
+# (Primary protection is setting the IONOS document root to public/.)
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>

@@ -1,0 +1,15 @@
+# Secrets & runtime cache — never commit
+private/config.php
+private/cache/*
+!private/cache/.gitkeep
+
+# Node build tooling
+build/node_modules/
+build/package-lock.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

@@ -1,0 +1,91 @@
+{
+  "departures": [
+    {
+      "number": "AA1234",
+      "status": "Boarding",
+      "airline": { "name": "American Airlines" },
+      "aircraft": { "reg": "N801AA", "model": "Airbus A321" },
+      "movement": {
+        "airport": { "iata": "LAX", "municipalityName": "Los Angeles", "name": "Los Angeles" },
+        "scheduledTime": { "local": "2026-06-17 14:05-04:00", "utc": "2026-06-17 18:05Z" },
+        "terminal": "B",
+        "gate": "B12"
+      }
+    },
+    {
+      "number": "UA890",
+      "status": "Expected",
+      "airline": { "name": "United Airlines" },
+      "aircraft": { "reg": "N76502", "model": "Boeing 737-900" },
+      "movement": {
+        "airport": { "iata": "ORD", "municipalityName": "Chicago", "name": "Chicago O'Hare" },
+        "scheduledTime": { "local": "2026-06-17 14:20-04:00" },
+        "terminal": "D",
+        "gate": "D7"
+      }
+    },
+    {
+      "number": "DL455",
+      "status": "Delayed",
+      "airline": { "name": "Delta Air Lines" },
+      "aircraft": { "reg": "N301DQ", "model": "Airbus A220-300" },
+      "movement": {
+        "airport": { "iata": "ATL", "municipalityName": "Atlanta", "name": "Atlanta" },
+        "scheduledTime": { "local": "2026-06-17 14:35-04:00" },
+        "revisedTime": { "local": "2026-06-17 15:10-04:00" },
+        "terminal": "E",
+        "gate": "E3"
+      }
+    },
+    {
+      "number": "BA068",
+      "status": "Expected",
+      "airline": { "name": "British Airways" },
+      "aircraft": { "reg": "G-ZBKO", "model": "Boeing 787-9" },
+      "movement": {
+        "airport": { "iata": "LHR", "municipalityName": "London", "name": "London Heathrow" },
+        "scheduledTime": { "local": "2026-06-17 18:50-04:00" },
+        "terminal": "A",
+        "gate": "A22"
+      }
+    },
+    {
+      "number": "WN2201",
+      "status": "Departed",
+      "airline": { "name": "Southwest Airlines" },
+      "aircraft": { "reg": "N8642E", "model": "Boeing 737-800" },
+      "movement": {
+        "airport": { "iata": "MCO", "municipalityName": "Orlando", "name": "Orlando" },
+        "scheduledTime": { "local": "2026-06-17 13:15-04:00" },
+        "terminal": "C",
+        "gate": "C20"
+      }
+    }
+  ],
+  "arrivals": [
+    {
+      "number": "AA2100",
+      "status": "Approaching",
+      "airline": { "name": "American Airlines" },
+      "aircraft": { "reg": "N921NN", "model": "Boeing 737 MAX 8" },
+      "movement": {
+        "airport": { "iata": "DFW", "municipalityName": "Dallas", "name": "Dallas Fort Worth" },
+        "scheduledTime": { "local": "2026-06-17 14:10-04:00" },
+        "terminal": "B",
+        "gate": "B6"
+      }
+    },
+    {
+      "number": "DL1899",
+      "status": "Arrived",
+      "airline": { "name": "Delta Air Lines" },
+      "aircraft": { "reg": "N991AT", "model": "Airbus A319" },
+      "movement": {
+        "airport": { "iata": "DTW", "municipalityName": "Detroit", "name": "Detroit" },
+        "scheduledTime": { "local": "2026-06-17 13:55-04:00" },
+        "terminal": "E",
+        "gate": "E14"
+      }
+    }
+  ]
+}

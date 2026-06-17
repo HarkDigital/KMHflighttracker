@@ -1,0 +1,295 @@
+/* board.css — split-flap "Solari board" theme for the PHL flight tracker. */
+
+:root {
+  --bg:        #0a0b0d;
+  --panel:     #121417;
+  --tile:      #1c1f24;
+  --tile-top:  #23272e;
+  --tile-bot:  #15181c;
+  --ink:       #f4f4f1;
+  --ink-dim:   #c8c8be;
+  --amber:     #f5b301;
+  --green:     #38d66b;
+  --red:       #ff5a52;
+  --line:      #000;
+  --tile-h:    1.5em;
+  --tile-w:    0.9em;
+  --flip-ms:   55ms;
+  font-size: 16px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.7rem 1rem 0.5rem;
+  background: linear-gradient(#16181c, #0d0e10);
+  border-bottom: 2px solid #000;
+  flex-wrap: wrap;
+}
+.topbar .brand {
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+  font-size: 1.15rem;
+}
+.topbar .sub { color: var(--ink-dim); letter-spacing: 0.2em; font-size: 0.7rem; }
+.topbar .clock {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.topbar .updated { color: var(--ink-dim); font-size: 0.65rem; letter-spacing: 0.1em; }
+.topbar .updated.stale { color: var(--amber); }
+
+/* ---------- Tabs ---------- */
+.tabs {
+  display: flex;
+  gap: 0;
+  background: #0d0e10;
+  border-bottom: 1px solid #000;
+}
+.tabs button {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  padding: 0.7rem 0.4rem;
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+}
+.tabs button.active { color: var(--amber); border-bottom-color: var(--amber); }
+
+/* ---------- Sub controls (departures/arrivals toggle, search) ---------- */
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  flex-wrap: wrap;
+}
+.controls .seg button {
+  background: var(--tile);
+  border: 1px solid #000;
+  color: var(--ink-dim);
+  padding: 0.4rem 0.9rem;
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.controls .seg button.active { background: var(--amber); color: #1a1300; font-weight: 700; }
+.controls input[type="text"] {
+  background: var(--tile);
+  border: 1px solid #000;
+  color: var(--ink);
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  min-width: 9rem;
+}
+.controls button.go {
+  background: var(--green);
+  border: none;
+  color: #04210f;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+main { flex: 1; padding: 0 0.5rem 2rem; }
+
+/* ---------- Board ---------- */
+.board { width: 100%; max-width: 1000px; margin: 0 auto; }
+.board-head, .board-row {
+  display: grid;
+  grid-template-columns: 4.5em 7em 1fr 3.5em 8em 1.6em;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.28rem 0.6rem;
+}
+.board-head {
+  color: var(--amber);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #2a2d33;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 2;
+}
+.board-row { border-bottom: 1px solid #17191d; }
+.board-row .star {
+  cursor: pointer;
+  color: #4a4d53;
+  font-size: 1.1rem;
+  text-align: center;
+  user-select: none;
+}
+.board-row .star.on { color: var(--amber); }
+
+.col-status .sf-field { --status-color: var(--ink); }
+
+/* ---------- Split-flap field & tiles ---------- */
+.sf-field {
+  display: inline-flex;
+  gap: 2px;
+  font-family: "Courier New", monospace;
+  font-weight: 700;
+}
+.sf-cell {
+  position: relative;
+  display: inline-block;
+  width: var(--tile-w);
+  height: var(--tile-h);
+  line-height: var(--tile-h);
+  background: var(--line);
+  border-radius: 2px;
+  perspective: 180px;
+  font-size: 1rem;
+  color: var(--ink);
+  overflow: hidden;
+}
+.sf-half, .sf-flap {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: var(--tile-top);
+}
+.sf-half .sf-ch, .sf-flap .sf-ch {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: var(--tile-h);
+  line-height: var(--tile-h);
+  text-align: center;
+}
+.sf-top    { top: 0;    border-bottom: 1px solid #000; border-radius: 2px 2px 0 0; }
+.sf-bottom { bottom: 0; background: var(--tile-bot); border-radius: 0 0 2px 2px; }
+.sf-top .sf-ch    { top: 0; }
+.sf-bottom .sf-ch { top: -100%; }
+
+/* Folding leaves (hidden until a flip runs) */
+.sf-flap { backface-visibility: hidden; transform: rotateX(90deg); opacity: 0; }
+.sf-flap-front {
+  top: 0;
+  transform-origin: bottom;
+  background: var(--tile-top);
+  border-bottom: 1px solid #000;
+  border-radius: 2px 2px 0 0;
+  transform: rotateX(0deg);
+  opacity: 0;            /* hidden at rest — only shown mid-flip */
+}
+.sf-flap-front .sf-ch { top: 0; }
+.sf-flap-back {
+  bottom: 0;
+  transform-origin: top;
+  background: var(--tile-bot);
+  border-radius: 0 0 2px 2px;
+  transform: rotateX(90deg);
+}
+.sf-flap-back .sf-ch { top: -100%; }
+
+/* During a flip: front folds down, then back folds up into place. */
+.sf-flip .sf-flap-front {
+  opacity: 1;
+  animation: sf-fold-down var(--flip-ms) ease-in forwards;
+}
+.sf-flip .sf-flap-back {
+  opacity: 1;
+  animation: sf-fold-up var(--flip-ms) ease-out var(--flip-ms) forwards;
+}
+@keyframes sf-fold-down {
+  from { transform: rotateX(0deg); }
+  to   { transform: rotateX(-90deg); }
+}
+@keyframes sf-fold-up {
+  from { transform: rotateX(90deg); }
+  to   { transform: rotateX(0deg); }
+}
+
+/* status colouring via modifier classes added by JS */
+.status-ontime  { color: var(--green) !important; }
+.status-delayed, .status-cancelled, .status-diverted { color: var(--red) !important; }
+.status-boarding, .status-departed, .status-landed   { color: var(--amber) !important; }
+
+/* ---------- Track / Tracked / Map panels ---------- */
+.panel { max-width: 760px; margin: 1rem auto; padding: 0 0.6rem; }
+.flightcard {
+  background: var(--panel);
+  border: 1px solid #000;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 0.8rem;
+}
+.flightcard .fc-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.flightcard .fc-num { color: var(--amber); font-weight: 800; letter-spacing: 0.12em; font-size: 1.1rem; }
+.flightcard .fc-route {
+  display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.6rem; align-items: center;
+  font-family: "Courier New", monospace;
+}
+.flightcard .fc-ap { text-align: center; }
+.flightcard .fc-ap .code { font-size: 1.6rem; font-weight: 800; color: var(--ink); }
+.flightcard .fc-ap .city { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; }
+.flightcard .fc-ap .time { font-size: 1rem; color: var(--amber); margin-top: 0.2rem; }
+.flightcard .fc-arrow { color: var(--ink-dim); font-size: 1.3rem; }
+.flightcard .fc-meta { margin-top: 0.7rem; color: var(--ink-dim); font-size: 0.78rem; letter-spacing: 0.06em; }
+.flightcard .fc-meta b { color: var(--ink); font-weight: 700; }
+.empty { color: var(--ink-dim); text-align: center; padding: 2rem 1rem; letter-spacing: 0.1em; }
+
+#map { width: 100%; height: 70vh; max-width: 1000px; margin: 0.5rem auto; border: 1px solid #000; border-radius: 6px; }
+.leaflet-container { background: #0a0b0d; }
+.plane-marker { color: var(--amber); font-size: 1.2rem; line-height: 1; will-change: transform; }
+
+/* ---------- Install hint ---------- */
+.install-hint {
+  margin: 0.6rem auto; max-width: 760px;
+  background: #1a1d22; border: 1px solid var(--amber);
+  color: var(--ink-dim); padding: 0.7rem 1rem; border-radius: 6px;
+  font-size: 0.75rem; letter-spacing: 0.05em; display: none;
+}
+.install-hint.show { display: block; }
+.install-hint b { color: var(--amber); }
+.install-hint .close { float: right; cursor: pointer; color: var(--ink-dim); }
+
+.hidden { display: none !important; }
+
+@media (max-width: 560px) {
+  :root { --tile-w: 0.78em; font-size: 14px; }
+  .board-head, .board-row { grid-template-columns: 3.4em 5.4em 1fr 2.6em 5.6em 1.4em; gap: 0.3rem; }
+  .col-airline, .board-head .col-airline { display: none; }
+}
