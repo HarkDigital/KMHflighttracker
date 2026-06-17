@@ -215,6 +215,6 @@
 
   window.Views = window.Views || {};
   window.Views.board = {
-    activate() { reset(); poll(); clearInterval(timer); timer = setInterval(poll, 15000); },
+    activate() { reset(); poll(); clearInterval(timer); timer = setInterval(poll, 60000); },
   };
 })();
