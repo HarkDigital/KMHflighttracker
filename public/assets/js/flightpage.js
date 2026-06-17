@@ -1,15 +1,13 @@
 /**
- * flightpage.js — the individual flight profile. Reached by tapping a flight on
- * the board, in Tracked, on the radar, or via the Track tab. Shows route, live
- * altitude / ground speed / vertical speed / heading, aircraft type & reg, and
- * a map with origin, destination, the aircraft, and the route line. Live data
- * refreshes every 10s.
+ * flightpage.js — individual flight profile. Uses Flights.lookup (AeroDataBox
+ * when available, else free feeds) for route/status/aircraft/scheduled times,
+ * and live ADS-B for position + telemetry, refreshing every 15s.
  */
 (function () {
   'use strict';
 
   const el = document.getElementById('flight-detail');
-  let cs = null, timer = null, map = null, layer = null, route = null;
+  let cs = null, timer = null, map = null, layer = null, info = null;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
@@ -29,21 +27,31 @@
   }
   const p2 = n => String(n).padStart(2, '0');
   const hm = d => p2(d.getHours()) + ':' + p2(d.getMinutes());
-  function times(ac, from, to) {
-    let dep = '—', eta = '—';
-    if (ac && typeof ac.lat === 'number' && ac.gs > 40 && ac.alt !== 'ground') {
-      if (to && to.lat != null) eta = '~' + hm(new Date(Date.now() + havNm(ac.lat, ac.lon, to.lat, to.lon) / ac.gs * 3600000));
-      if (from && from.lat != null) dep = '~' + hm(new Date(Date.now() - havNm(from.lat, from.lon, ac.lat, ac.lon) / ac.gs * 3600000));
-    }
-    return { dep, eta };
-  }
 
-  function tele(ac) {
+  // Displayed dep/arr times: prefer real scheduled/estimated; else estimate from
+  // live position + ground speed.
+  function depTime(i) {
+    if (i.from.estimated) return i.from.estimated;
+    if (i.from.scheduled) return i.from.scheduled;
+    const ac = i.live;
+    if (ac && ac.gs > 40 && ac.alt !== 'ground' && i.from.lat != null)
+      return '~' + hm(new Date(Date.now() - havNm(i.from.lat, i.from.lon, ac.lat, ac.lon) / ac.gs * 3600000));
+    return '—';
+  }
+  function arrTime(i) {
+    if (i.to.estimated) return i.to.estimated;
+    if (i.to.scheduled) return i.to.scheduled;
+    const ac = i.live;
+    if (ac && ac.gs > 40 && ac.alt !== 'ground' && i.to.lat != null)
+      return '~' + hm(new Date(Date.now() + havNm(ac.lat, ac.lon, i.to.lat, i.to.lon) / ac.gs * 3600000));
+    return '—';
+  }
+  function tele(i) {
+    const ac = i.live;
     return {
-      alt: ac && typeof ac.alt === 'number' ? ac.alt.toLocaleString() + ' ft'
-           : (ac && ac.alt === 'ground' ? 'GND' : '—'),
+      alt: ac && typeof ac.alt === 'number' ? ac.alt.toLocaleString() + ' ft' : (ac && ac.alt === 'ground' ? 'GND' : '—'),
       gs:  ac && ac.gs ? Math.round(ac.gs) + ' kt' : '—',
-      vs:  ac && ac.baroRate != null ? (ac.baroRate > 0 ? '+' : '') + Math.round(ac.baroRate) + ' fpm' : '—',
+      vs:  ac && ac.vs != null ? (ac.vs > 0 ? '+' : '') + Math.round(ac.vs) + ' fpm' : '—',
       hdg: ac && ac.track != null ? Math.round(ac.track) + '°' : '—',
     };
   }
@@ -52,51 +60,53 @@
     const b = el.querySelector('.fp-back');
     if (b) b.addEventListener('click', () => App.closeFlight());
   }
+  function stat(v, k) { return '<div class="fp-stat"><div class="v">' + v + '</div><div class="k">' + k + '</div></div>'; }
 
   function skeleton(num) {
     el.innerHTML = '<button class="fp-back">‹ Back</button>' +
       '<div class="fp-head"><span class="fp-num">' + esc(num) + '</span></div>' +
-      '<div class="empty">Loading live data…</div>';
+      '<div class="empty">Looking up ' + esc(num) + '…</div>';
     wireBack();
   }
 
-  function render(num, ac, rt, acInfo) {
-    const status = !ac ? 'NOT AIRBORNE' : (ac.alt === 'ground' ? 'ON GROUND' : 'EN ROUTE');
-    const from = rt && rt.origin, to = rt && rt.destination;
-    const type = (ac && ac.type) || (acInfo && acInfo.type) || '';
-    const reg = (ac && ac.reg) || (acInfo && acInfo.reg) || '';
-    const t = tele(ac);
-    const tt = times(ac, from, to);
-    const airline = window.Airlines ? Airlines.airlineOf(num) : '';
+  function render(num, i) {
+    const t = tele(i);
+    const from = i.from, to = i.to;
+    const gates = [];
+    if (from.gate || from.terminal) gates.push('Dep ' + esc((from.terminal ? 'T' + from.terminal + ' ' : '') + (from.gate ? 'Gate ' + from.gate : '')).trim());
+    if (to.gate || to.terminal) gates.push('Arr ' + esc((to.terminal ? 'T' + to.terminal + ' ' : '') + (to.gate ? 'Gate ' + to.gate : '')).trim());
     const starred = App.Stars.has(num);
 
     el.innerHTML =
       '<button class="fp-back">‹ Back</button>' +
       '<div class="fp-head"><span class="fp-num">' + esc(num) + '</span>' +
-        '<span class="fp-status ' + App.statusClass(status) + '">' + status + '</span></div>' +
-      (airline ? '<div class="fp-airline">' + esc(airline) + '</div>' : '') +
+        '<span class="fp-status ' + App.statusClass(i.status) + '">' + esc(i.status) + '</span></div>' +
+      (i.airline ? '<div class="fp-airline">' + esc(i.airline) + '</div>' : '') +
       '<div class="fp-route">' +
-        '<div class="fp-ap"><div class="code">' + esc(from && (from.iata || from.icao) || '???') + '</div>' +
-          '<div class="city">' + esc(from && (from.city || from.name) || '') + '</div></div>' +
+        '<div class="fp-ap"><div class="code">' + esc(from.iata || from.icao || '???') + '</div>' +
+          '<div class="city">' + esc(from.city || '') + '</div></div>' +
         '<div class="fp-arrow">✈</div>' +
-        '<div class="fp-ap"><div class="code">' + esc(to && (to.iata || to.icao) || '???') + '</div>' +
-          '<div class="city">' + esc(to && (to.city || to.name) || '') + '</div></div>' +
+        '<div class="fp-ap"><div class="code">' + esc(to.iata || to.icao || '???') + '</div>' +
+          '<div class="city">' + esc(to.city || '') + '</div></div>' +
       '</div>' +
       '<div class="fp-times">' +
-        '<div class="fp-stat"><div class="v" id="fp-dep">' + tt.dep + '</div><div class="k">Est. takeoff</div></div>' +
-        '<div class="fp-stat"><div class="v" id="fp-eta">' + tt.eta + '</div><div class="k">Est. landing (ETA)</div></div>' +
+        '<div class="fp-stat"><div class="v" id="fp-dep">' + depTime(i) + '</div><div class="k">' +
+          (from.scheduled || from.estimated ? 'Departure' : 'Est. takeoff') + '</div></div>' +
+        '<div class="fp-stat"><div class="v" id="fp-eta">' + arrTime(i) + '</div><div class="k">' +
+          (to.scheduled || to.estimated ? 'Arrival' : 'Est. landing (ETA)') + '</div></div>' +
       '</div>' +
+      (gates.length ? '<div class="fp-meta">' + gates.join(' &middot; ') + '</div>' : '') +
       '<div class="fp-grid">' +
         stat(t.alt, 'Altitude') + stat(t.gs, 'Ground speed') + stat(t.vs, 'Vert. speed') +
-        stat(t.hdg, 'Heading') + stat(esc(type || '—'), 'Aircraft') + stat(esc(reg || '—'), 'Registration') +
+        stat(t.hdg, 'Heading') + stat(esc(i.aircraft || '—'), 'Aircraft') + stat(esc(i.reg || '—'), 'Registration') +
       '</div>' +
       '<div class="fp-meta"><button class="fp-star ' + (starred ? 'on' : '') + '">' +
         (starred ? '★ Tracked' : '☆ Track') + '</button></div>' +
       '<div id="fp-map"></div>' +
-      '<div class="fp-note">' + (ac
-        ? 'Live position from ADS-B. Route is best-effort from community data' + (rt && rt.approx ? ' and may be approximate' : '') + '.'
-        : 'This flight isn\'t broadcasting a position right now, so there\'s no live data. The route shown is a typical/last-known route from community data and may be out of date for today.')
-      + '</div>';
+      '<div class="fp-note">' + (i.source === 'adb'
+        ? 'Schedule from AeroDataBox; live position from ADS-B.'
+        : (i.airborne ? 'Live position from ADS-B. Route is best-effort from community data' + (i.approx ? ' and may be approximate' : '') + '.'
+          : 'Not broadcasting a position right now. Route is a typical/last-known route from community data and may be out of date.')) + '</div>';
 
     wireBack();
     const sb = el.querySelector('.fp-star');
@@ -105,9 +115,8 @@
       sb.classList.toggle('on', on);
       sb.textContent = on ? '★ Tracked' : '☆ Track';
     });
-    buildMap(ac, from, to);
+    buildMap(i);
   }
-  function stat(v, k) { return '<div class="fp-stat"><div class="v">' + v + '</div><div class="k">' + k + '</div></div>'; }
 
   function planeIcon(track) {
     return L.divIcon({ className: '',
@@ -115,7 +124,7 @@
       iconSize: [24, 24], iconAnchor: [12, 12] });
   }
 
-  async function buildMap(ac, from, to) {
+  async function buildMap(i) {
     await App.loadLeaflet();
     const mapEl = document.getElementById('fp-map');
     if (!window.L || !mapEl) return;
@@ -124,30 +133,29 @@
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
       { attribution: '&copy; OSM &copy; CARTO', maxZoom: 11 }).addTo(map);
     layer = L.layerGroup().addTo(map);
-    draw(ac, from, to, true);
+    draw(i, true);
     setTimeout(() => { if (map) map.invalidateSize(); }, 80);
   }
 
-  function draw(ac, from, to, fit) {
+  function draw(i, fit) {
     if (!map || !layer) return;
     layer.clearLayers();
     const pts = [], line = [];
-    if (from && from.lat != null) {
-      L.circleMarker([from.lat, from.lon], { radius: 5, color: '#38d66b', weight: 2, fillOpacity: 1 })
-        .bindTooltip(from.iata || from.icao || '').addTo(layer);
+    const from = i.from, to = i.to, ac = i.live;
+    if (from.lat != null) {
+      L.circleMarker([from.lat, from.lon], { radius: 5, color: '#38d66b', weight: 2, fillOpacity: 1 }).bindTooltip(from.iata || '').addTo(layer);
       pts.push([from.lat, from.lon]); line.push([from.lat, from.lon]);
     }
     if (ac && ac.lat != null) {
       L.marker([ac.lat, ac.lon], { icon: planeIcon(ac.track) }).addTo(layer);
       pts.push([ac.lat, ac.lon]); line.push([ac.lat, ac.lon]);
     }
-    if (to && to.lat != null) {
-      L.circleMarker([to.lat, to.lon], { radius: 5, color: '#ff5a52', weight: 2, fillOpacity: 1 })
-        .bindTooltip(to.iata || to.icao || '').addTo(layer);
+    if (to.lat != null) {
+      L.circleMarker([to.lat, to.lon], { radius: 5, color: '#ff5a52', weight: 2, fillOpacity: 1 }).bindTooltip(to.iata || '').addTo(layer);
       pts.push([to.lat, to.lon]); line.push([to.lat, to.lon]);
     }
     if (line.length >= 2) L.polyline(line, { color: '#f5b301', weight: 1.5, opacity: 0.7, dashArray: '4 6' }).addTo(layer);
-    if (fit && pts.length === 1) map.setView(pts[0], 8);
+    if (fit && pts.length === 1) map.setView(pts[0], 7);
     else if (fit && pts.length) map.fitBounds(pts, { padding: [30, 30] });
     else if (fit) map.setView([39.87, -75.24], 4);
   }
@@ -156,34 +164,28 @@
     const num = App.flight; cs = num;
     if (!num) { el.innerHTML = '<div class="empty">No flight selected.</div>'; return; }
     skeleton(num);
-    let ac = null, rt = null, acInfo = null;
-    try { const live = await Adsb.callsign(num); ac = live && live[0]; } catch (_) {}
-    try { rt = await Adsbdb.resolve(num, ac && ac.lat, ac && ac.lon); } catch (_) {}
-    try { if (ac && (ac.reg || ac.hex)) acInfo = await Adsbdb.aircraft(ac.reg || ac.hex); } catch (_) {}
-    if (cs !== num) return;     // user opened a different flight meanwhile
-    route = rt;
-    render(num, ac, rt, acInfo);
+    const i = await Flights.lookup(num);
+    if (cs !== num) return;
+    info = i;
+    render(num, i);
   }
 
   async function refresh() {
-    if (!cs || isHidden()) return;
+    if (!cs || isHidden() || !info) return;
     let ac = null;
-    try { const live = await Adsb.callsign(cs); ac = live && live[0]; } catch (_) {}
-    const t = tele(ac);
-    const grid = el.querySelector('.fp-grid');
-    if (grid) {
-      const v = grid.querySelectorAll('.fp-stat .v');
-      if (v.length >= 4) { v[0].textContent = t.alt; v[1].textContent = t.gs; v[2].textContent = t.vs; v[3].textContent = t.hdg; }
-    }
-    const tt = times(ac, route && route.origin, route && route.destination);
+    try { const l = await Adsb.callsign(cs); ac = l && l[0]; } catch (_) {}
+    info.live = ac ? { alt: ac.alt, gs: ac.gs, vs: ac.baroRate, track: ac.track, lat: ac.lat, lon: ac.lon } : info.live;
+    const t = tele(info);
+    const v = el.querySelectorAll('.fp-grid .fp-stat .v');
+    if (v.length >= 4) { v[0].textContent = t.alt; v[1].textContent = t.gs; v[2].textContent = t.vs; v[3].textContent = t.hdg; }
     const dep = el.querySelector('#fp-dep'), eta = el.querySelector('#fp-eta');
-    if (dep) dep.textContent = tt.dep;
-    if (eta) eta.textContent = tt.eta;
-    draw(ac, route && route.origin, route && route.destination, false);
+    if (dep) dep.textContent = depTime(info);
+    if (eta) eta.textContent = arrTime(info);
+    draw(info, false);
   }
 
   window.Views = window.Views || {};
   window.Views.flight = {
-    activate() { load(); clearInterval(timer); timer = setInterval(refresh, 10000); },
+    activate() { load(); clearInterval(timer); timer = setInterval(refresh, 15000); },
   };
 })();

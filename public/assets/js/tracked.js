@@ -1,6 +1,7 @@
 /**
- * tracked.js — the "Tracked" tab: starred flights (stored on the device), each
- * a tappable card that opens the full flight page. Status resolved live.
+ * tracked.js — the "Tracked" tab: starred flights (on the device), each a
+ * tappable card that opens the full flight page. Uses Flights.lookup so cards
+ * show accurate status/route (AeroDataBox when available).
  */
 (function () {
   'use strict';
@@ -14,20 +15,19 @@
   }
   function code(apt) { return esc(apt && (apt.iata || apt.icao) || '???'); }
 
-  function card(num, rt, ac) {
-    const status = !ac ? 'NOT AIRBORNE' : (ac.alt === 'ground' ? 'ON GROUND' : 'EN ROUTE');
-    const from = rt && rt.origin, to = rt && rt.destination;
+  function card(num, i) {
+    const t = i.from && i.to ? '' : '';
     return `
       <div class="flightcard" data-flight="${esc(num)}">
         <div class="fc-head">
           <span class="fc-num">${esc(num)}</span>
-          <span class="${App.statusClass(status)}">${status}</span>
+          <span class="${App.statusClass(i.status)}">${esc(i.status)}</span>
           <span class="star on" title="Remove" data-rm="${esc(num)}">★</span>
         </div>
         <div class="fc-route">
-          <div class="fc-ap"><div class="code">${code(from)}</div></div>
+          <div class="fc-ap"><div class="code">${code(i.from)}</div></div>
           <div class="fc-arrow">✈</div>
-          <div class="fc-ap"><div class="code">${code(to)}</div></div>
+          <div class="fc-ap"><div class="code">${code(i.to)}</div></div>
         </div>
         <div class="fc-meta">Tap for live altitude, speed &amp; map →</div>
       </div>`;
@@ -41,19 +41,13 @@
       return;
     }
     const cards = await Promise.all(stars.map(async num => {
-      try {
-        const live = await Adsb.callsign(num);
-        const ac = live && live[0];
-        const rt = await Adsbdb.resolve(num, ac && ac.lat, ac && ac.lon);
-        return card(num, rt, ac);
-      } catch (_) { return card(num, null, null); }
+      try { return card(num, await Flights.lookup(num)); }
+      catch (_) { return card(num, { status: '—', from: {}, to: {} }); }
     }));
     wrap.innerHTML = cards.join('');
     wrap.querySelectorAll('.flightcard').forEach(fc => {
       fc.addEventListener('click', e => {
-        if (e.target.closest('[data-rm]')) {
-          App.Stars.remove(e.target.dataset.rm); render(); return;
-        }
+        if (e.target.closest('[data-rm]')) { App.Stars.remove(e.target.dataset.rm); render(); return; }
         App.openFlight(fc.dataset.flight);
       });
     });
@@ -61,10 +55,6 @@
 
   window.Views = window.Views || {};
   window.Views.tracked = {
-    activate() {
-      render();
-      clearInterval(timer);
-      timer = setInterval(render, 30000);
-    },
+    activate() { render(); clearInterval(timer); timer = setInterval(render, 30000); },
   };
 })();

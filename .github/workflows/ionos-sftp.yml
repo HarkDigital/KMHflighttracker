@@ -32,10 +32,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Run the app in static mode (no PHP backend on this host).
-      - name: Pin static data mode
+      # Board & radar run on free client-side feeds (ADS-B + adsbdb), so the app
+      # runs in "static" data mode; flight-by-number lookups go through the PHP
+      # AeroDataBox proxy for accurate routes, times and gates.
+      - name: Pin runtime config
         run: |
-          echo "window.APP_CONFIG = { dataMode: 'static' };" > public/assets/js/runtime-config.js
+          echo "window.APP_CONFIG = { dataMode: 'static', flightApi: 'api/flight.php' };" > public/assets/js/runtime-config.js
+
+      # Generate the server-only AeroDataBox config from the GitHub secret. The
+      # key never lands in the repo or the browser — only in this PHP file on the
+      # IONOS webspace. Skipped (proxy returns a graceful error -> free fallback)
+      # if the secret isn't set.
+      - name: Write AeroDataBox config
+        env:
+          ADB_KEY: ${{ secrets.AERODATABOX_KEY }}
+        run: |
+          {
+            echo "<?php"
+            echo "// Generated at deploy from the AERODATABOX_KEY secret. Do not commit."
+            echo "return ["
+            echo "    'aerodatabox_key'  => '${ADB_KEY}',"
+            echo "    'aerodatabox_host' => 'aerodatabox.p.rapidapi.com',"
+            echo "    'cache_ttl'        => 900,"
+            echo "];"
+          } > public/api/config.php
 
       - name: Upload public/ to IONOS via SFTP
         if: env.SERVER != ''

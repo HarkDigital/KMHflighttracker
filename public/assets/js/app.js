@@ -16,6 +16,10 @@
     ? window.APP_CONFIG.dataMode === 'static'
     : /\.github\.io$/i.test(location.hostname);
 
+  // When present (set by the IONOS deploy), flight lookups use this PHP endpoint
+  // (AeroDataBox + server cache). Absent on GitHub Pages -> free feeds.
+  const flightApi = (window.APP_CONFIG && window.APP_CONFIG.flightApi) || null;
+
   // ---- Selected airport (persisted on the device) ----
   const AIRPORT_KEY = 'kmh.airport';
   let airports = [];
@@ -292,7 +296,8 @@
 
   // Expose shared bits (airport is set during init()).
   window.App = { API, isStatic, dataUrl, computeAge, Stars, statusClass, formatAge,
-                 loadLeaflet, openFlight, closeFlight, show, airport: null, airports: [], flight: null };
+                 loadLeaflet, openFlight, closeFlight, show, flightApi,
+                 airport: null, airports: [], flight: null };
 
   // ---- Init: load the airport list, then start ----
   (async function init() {

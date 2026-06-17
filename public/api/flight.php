@@ -1,26 +1,165 @@
 <?php
 /**
  * GET /api/flight.php?flight=AA1234
- * Returns the cached status/route/aircraft for a tracked flight. If the flight
- * isn't cached yet, responds with status "pending" — the frontend should POST
- * it to /api/watch.php so the cron picks it up next run.
+ *
+ * On-demand, cached AeroDataBox flight-by-number proxy. The browser never sees
+ * the API key: it lives in config.php (generated at deploy from the
+ * AERODATABOX_KEY GitHub secret) and is only sent server-side in the
+ * X-RapidAPI-Key header. Responses are cached on disk for cache_ttl seconds so
+ * many viewers of the same flight cost a single API unit — this is what keeps us
+ * inside the free Basic monthly quota.
+ *
+ * Output is normalized to the shape flights.js (Flights.fromAdb) expects:
+ *   { state:'ready', flight, airline, status, aircraft, reg,
+ *     from:{iata,icao,name,city,lat,lon,scheduled,estimated,gate,terminal},
+ *     to:{...}, fetchedAt, ageSeconds }
+ * On any upstream/config failure it returns { state:'error', ... } so the client
+ * transparently falls back to the free ADS-B + adsbdb feeds.
  */
-require __DIR__ . '/_bootstrap.php';
 
-$number = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['flight'] ?? ''));
-if ($number === '') {
-    json_out(['error' => 'Missing flight number'], 400);
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: public, max-age=60');
+
+function out($obj, $code = 200) {
+    http_response_code($code);
+    echo json_encode($obj, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
-$staleSeconds = (int)($config['flight_stale_min'] ?? 180) * 60;
-$env = cache_envelope($cache, 'flight_' . $number, $staleSeconds);
-
-if ($env === null) {
-    json_out([
-        'flight'  => $number,
-        'state'   => 'pending',
-        'message' => 'Not tracked yet — added to the queue.',
-    ]);
+// ---- Config (key never leaves the server) ----
+$cfgPath = __DIR__ . '/config.php';
+if (!is_file($cfgPath)) {
+    out(['state' => 'error', 'reason' => 'not_configured'], 200);
 }
-$env['state'] = 'ready';
-json_out($env);
+$cfg  = require $cfgPath;
+$key  = $cfg['aerodatabox_key']  ?? '';
+$host = $cfg['aerodatabox_host'] ?? 'aerodatabox.p.rapidapi.com';
+$ttl  = (int)($cfg['cache_ttl']  ?? 900);
+if ($key === '' || $key === 'YOUR_RAPIDAPI_KEY') {
+    out(['state' => 'error', 'reason' => 'not_configured'], 200);
+}
+
+// ---- Validate the flight number ----
+$flight = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['flight'] ?? ''));
+if (!preg_match('/^[A-Z0-9]{2,8}$/', $flight)) {
+    out(['state' => 'error', 'reason' => 'bad_flight'], 400);
+}
+
+// ---- Disk cache ----
+$cacheDir = __DIR__ . '/cache';
+if (!is_dir($cacheDir)) { @mkdir($cacheDir, 0775, true); }
+$cacheFile = $cacheDir . '/flight_' . $flight . '.json';
+
+if (is_file($cacheFile)) {
+    $age = time() - filemtime($cacheFile);
+    if ($age < $ttl) {
+        $cached = json_decode(file_get_contents($cacheFile), true);
+        if (is_array($cached)) {
+            $cached['ageSeconds'] = $age;
+            out($cached);
+        }
+    }
+}
+
+// ---- Call AeroDataBox (Tier-2 flight status, ~2 units) ----
+$url = 'https://' . $host . '/flights/number/' . rawurlencode($flight)
+     . '?withAircraftImage=false&withLocation=true';
+
+$ch = curl_init($url);
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT        => 15,
+    CURLOPT_SSL_VERIFYPEER => true,
+    CURLOPT_HTTPHEADER     => [
+        'X-RapidAPI-Key: ' . $key,
+        'X-RapidAPI-Host: ' . $host,
+    ],
+]);
+$body = curl_exec($ch);
+$code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$err  = curl_error($ch);
+curl_close($ch);
+
+// On upstream trouble, serve a stale cache if we have one rather than failing.
+if ($body === false || $code >= 400) {
+    if (is_file($cacheFile)) {
+        $cached = json_decode(file_get_contents($cacheFile), true);
+        if (is_array($cached)) {
+            $cached['stale'] = true;
+            $cached['ageSeconds'] = time() - filemtime($cacheFile);
+            out($cached);
+        }
+    }
+    out(['state' => 'error', 'reason' => 'upstream', 'code' => $code, 'detail' => $err], 200);
+}
+
+$data = json_decode($body, true);
+if (!is_array($data) || !count($data)) {
+    out(['state' => 'error', 'reason' => 'not_found'], 200);
+}
+
+// ---- Pick the most relevant leg ----
+// AeroDataBox returns one entry per recent/upcoming operation of this number.
+// Prefer an active flight (EnRoute/Departed), else the soonest scheduled.
+function legRank($f) {
+    $s = strtolower($f['status'] ?? '');
+    if (strpos($s, 'enroute') !== false || strpos($s, 'en route') !== false) return 0;
+    if (strpos($s, 'departed') !== false || strpos($s, 'airborne') !== false) return 0;
+    if (strpos($s, 'boarding') !== false || strpos($s, 'expected') !== false) return 1;
+    if (strpos($s, 'scheduled') !== false) return 2;
+    if (strpos($s, 'arrived') !== false || strpos($s, 'landed') !== false) return 3;
+    return 4;
+}
+usort($data, function ($a, $b) { return legRank($a) - legRank($b); });
+$f = $data[0];
+
+// ---- Normalize ----
+function hm($t) {
+    // AeroDataBox times look like "2026-06-17 14:30-04:00" (local) / "...Z" (utc).
+    if (!is_array($t)) return '';
+    $s = $t['local'] ?? ($t['utc'] ?? '');
+    if (preg_match('/(\d{2}):(\d{2})/', (string)$s, $m)) return $m[1] . ':' . $m[2];
+    return '';
+}
+function endpoint($e) {
+    $ap    = $e['airport'] ?? [];
+    $loc   = $ap['location'] ?? [];
+    $sched = hm($e['scheduledTime'] ?? null);
+    $rev   = hm($e['revisedTime'] ?? null);   // actual/estimated when known
+    return [
+        'iata'      => $ap['iata'] ?? '',
+        'icao'      => $ap['icao'] ?? '',
+        'name'      => $ap['name'] ?? '',
+        'city'      => $ap['municipalityName'] ?? ($ap['shortName'] ?? ($ap['name'] ?? '')),
+        'lat'       => $loc['lat'] ?? null,
+        'lon'       => $loc['lon'] ?? null,
+        'scheduled' => $sched,
+        'estimated' => ($rev && $rev !== $sched) ? $rev : '',
+        'gate'      => $e['gate'] ?? '',
+        'terminal'  => $e['terminal'] ?? '',
+    ];
+}
+
+$ac = $f['aircraft'] ?? [];
+$result = [
+    'state'      => 'ready',
+    'flight'     => $f['number'] ?? $flight,
+    'airline'    => $f['airline']['name'] ?? '',
+    'status'     => $f['status'] ?? 'Scheduled',
+    'aircraft'   => $ac['model'] ?? '',
+    'reg'        => $ac['reg'] ?? '',
+    'from'       => endpoint($f['departure'] ?? []),
+    'to'         => endpoint($f['arrival'] ?? []),
+    'fetchedAt'  => time(),
+    'ageSeconds' => 0,
+];
+
+// ---- Persist (atomic) ----
+$tmp = $cacheFile . '.' . getmypid() . '.tmp';
+if (@file_put_contents($tmp, json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) !== false) {
+    @rename($tmp, $cacheFile);
+}
+
+out($result);

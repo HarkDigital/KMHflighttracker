@@ -47,6 +47,16 @@ window.Airlines = (function () {
     if (pre.length === 2 && byIata[pre]) return byIata[pre].icao + num;
     return f;   // already ICAO, or unknown prefix
   }
+  // Convert a broadcast ICAO callsign back to the ticket IATA flight number
+  // (DAL2092 -> DL2092). AeroDataBox's flight-number lookup is keyed on the IATA
+  // number, so this gives the most reliable match. Returns the input unchanged
+  // if the prefix isn't a known 3-letter ICAO airline code.
+  function toIata(callsign) {
+    const f = clean(callsign);
+    const m = f.match(/^([A-Z]{3})(\d{1,4}[A-Z]?)$/);
+    if (m && byIcao[m[1]]) return byIcao[m[1]].iata + m[2];
+    return f;
+  }
   function looksLikeFlight(s) { return FLIGHT_RE.test(clean(s)); }
   function name(code) {
     const c = clean(code);
@@ -56,5 +66,5 @@ window.Airlines = (function () {
     const m = clean(callsign).match(/^([A-Z]{3})\d/);
     return m ? name(m[1]) : '';
   }
-  return { toCallsign, looksLikeFlight, name, airlineOf };
+  return { toCallsign, toIata, looksLikeFlight, name, airlineOf };
 })();
