@@ -93,8 +93,10 @@
       '<div class="fp-meta"><button class="fp-star ' + (starred ? 'on' : '') + '">' +
         (starred ? '★ Tracked' : '☆ Track') + '</button></div>' +
       '<div id="fp-map"></div>' +
-      '<div class="fp-note">Live position from ADS-B. Route is best-effort from community data' +
-        (rt && rt.approx ? ' and may be approximate' : '') + '.</div>';
+      '<div class="fp-note">' + (ac
+        ? 'Live position from ADS-B. Route is best-effort from community data' + (rt && rt.approx ? ' and may be approximate' : '') + '.'
+        : 'This flight isn\'t broadcasting a position right now, so there\'s no live data. The route shown is a typical/last-known route from community data and may be out of date for today.')
+      + '</div>';
 
     wireBack();
     const sb = el.querySelector('.fp-star');
