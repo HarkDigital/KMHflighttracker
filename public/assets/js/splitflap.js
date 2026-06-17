@@ -22,6 +22,7 @@
   for (let i = 0; i < CHARSET.length; i++) INDEX[CHARSET[i]] = i;
 
   const STEP_MS = 55;     // time per single flip
+  const MAX_STEPS = 8;    // cap flips per cell so a fresh tile doesn't roll the whole charset
   const reduceMotion = global.matchMedia &&
     global.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -69,7 +70,18 @@
         this._paint(target);
         return;
       }
-      if (!this.animating) this._run();
+      if (!this.animating) {
+        // Jump instantly to within MAX_STEPS of the target, then animate the
+        // last few flips — keeps the rolling feel without the long spin-up.
+        const N = CHARSET.length;
+        const dist = (INDEX[target] - INDEX[this.current] + N) % N;
+        if (dist > MAX_STEPS) {
+          const jump = CHARSET[(INDEX[target] - MAX_STEPS + N) % N];
+          this.current = jump;
+          this._paint(jump);
+        }
+        this._run();
+      }
     }
 
     _run() {

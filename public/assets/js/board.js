@@ -19,7 +19,7 @@
     { key: 'status', w: 11, cls: 'col-status' },
   ];
   const RADIUS_NM = 100;
-  const MAX_ROWS = 24;
+  const MAX_ROWS = 14;
 
   const listEl    = document.getElementById('board-list');
   const noteEl    = document.getElementById('board-note');
