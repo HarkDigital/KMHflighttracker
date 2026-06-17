@@ -417,10 +417,18 @@ body.home-active main { padding-bottom: 0; }
 
 /* ---------- Home launchpad ---------- */
 body.home-active .tabs { display: none; }
+/* Fill the screen and centre the launchpad buttons vertically. */
+[data-view="home"]:not(.hidden) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 .home {
   max-width: 640px;
-  margin: 1.5rem auto;
-  padding: 0 1rem;
+  margin: 0 auto;
+  padding: 1rem;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
