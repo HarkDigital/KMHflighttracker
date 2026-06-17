@@ -190,9 +190,12 @@
     if (list === null) { if (updatedEl) updatedEl.textContent = 'OFFLINE'; return; }
 
     const cands = classify(list, ap);
-    if (!showed) render(cands, firstPaint);            // quick paint of flights/times
+    // Only ever show flights with a known destination/origin — never blank rows
+    // (military, GA, and odd callsigns the route DBs don't recognise).
+    const routed = r => !!(r.place || r.placeIata);
+    if (!showed) render(cands.filter(routed), firstPaint);   // quick paint; routes fill in below
     await enrich(cands, ap);
-    const rows = cands.slice(0, MAX_ROWS);
+    const rows = cands.filter(routed).slice(0, MAX_ROWS);
     if (!rows.length && noteEl) noteEl.textContent = 'No ' + type + ' near ' + ap.name + ' right now.';
     render(rows, firstPaint || !showed);
     saveCache(ap.icao, rows);
