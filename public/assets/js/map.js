@@ -23,6 +23,8 @@
   let map = null, layer = null, apMarker = null, pollTimer = null, tickTimer = null;
   let lastIcao = null;
   const fleet = new Map();     // hex -> aircraft state + marker
+  const destCache = new Map(); // callsign -> destination {lat,lon} | null (no route)
+  let resolving = false;       // guard against overlapping route resolution
 
   function center() {
     const a = App.airport;
@@ -81,26 +83,45 @@
   }
 
   // Resolve each plane's route (cached, shared) so the icon can point at the
-  // destination. Runs in the background; planes show heading until resolved.
+  // destination. Looks each callsign up at most once and caches the result —
+  // including "no route" — and resolves in small chunks so the route lookup
+  // never chokes on one huge batch. Planes show heading until resolved.
   async function resolveRoutes() {
-    const planes = [];
+    if (resolving || !window.Adsbdb) return;
+    // Apply already-known destinations, and collect the callsigns we don't know.
+    const need = [];
+    let applied = false;
     fleet.forEach(a => {
       const cs = a.flight && a.flight.toUpperCase();
-      if (cs && a.dest === undefined) planes.push({ callsign: cs, lat: a.lat, lon: a.lon });
+      if (!cs) return;
+      if (destCache.has(cs)) {
+        if (a.dest === undefined) { a.dest = destCache.get(cs); applied = true; }
+      } else if (a.dest === undefined) {
+        need.push({ cs, a });
+      }
     });
-    if (!planes.length || !window.Adsbdb) return;
-    let m = {};
-    try { m = await Adsbdb.resolveBatch(planes); } catch (_) { return; }
-    let changed = false;
-    fleet.forEach(a => {
-      const cs = a.flight && a.flight.toUpperCase();
-      if (!cs || a.dest !== undefined) return;
-      if (!Object.prototype.hasOwnProperty.call(m, cs)) return;   // not resolved yet; retry next poll
-      const rt = m[cs];
-      a.dest = (rt && rt.destination && rt.destination.lat != null) ? rt.destination : null;
-      changed = true;
-    });
-    if (changed) redraw();
+    if (applied) redraw();
+    if (!need.length) return;
+
+    resolving = true;
+    try {
+      for (let i = 0; i < need.length; i += 40) {
+        const chunk = need.slice(i, i + 40);
+        let m = {};
+        try {
+          m = await Adsbdb.resolveBatch(chunk.map(p => ({ callsign: p.cs, lat: p.a.lat, lon: p.a.lon })),
+                                        { fallback: false });
+        } catch (_) { continue; }
+        let changed = false;
+        chunk.forEach(p => {
+          const rt = m[p.cs];
+          const dest = (rt && rt.destination && rt.destination.lat != null) ? rt.destination : null;
+          destCache.set(p.cs, dest);     // cache the answer (incl. null) so we never re-ask
+          if (p.a.dest === undefined) { p.a.dest = dest; changed = true; }
+        });
+        if (changed) redraw();
+      }
+    } finally { resolving = false; }
   }
 
   // Advance a lat/lon by ground speed (kt) along a track (deg) for dt seconds.
@@ -116,6 +137,7 @@
   function clearFleet() {
     fleet.forEach(a => { if (a.marker) layer.removeLayer(a.marker); });
     fleet.clear();
+    destCache.clear();
   }
 
   async function fetchFleet() {
