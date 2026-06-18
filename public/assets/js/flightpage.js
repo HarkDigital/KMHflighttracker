@@ -118,10 +118,23 @@
     buildMap(i);
   }
 
-  function planeIcon(track) {
+  // Bearing (deg clockwise from north) from one point to another.
+  function bearingTo(la1, lo1, la2, lo2) {
+    const p1 = toRad(la1), p2 = toRad(la2), dl = toRad(lo2 - lo1);
+    const y = Math.sin(dl) * Math.cos(p2);
+    const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+
+  // SVG plane that points straight up at 0deg, so rotate(bearing) aims the nose
+  // exactly along the given bearing (no built-in glyph tilt like the ✈ char).
+  function planeIcon(deg) {
     return L.divIcon({ className: '',
-      html: '<div class="plane-marker" style="transform:rotate(' + Math.round(track || 0) + 'deg)">✈</div>',
-      iconSize: [24, 24], iconAnchor: [12, 12] });
+      html: '<div class="plane-marker" style="transform:rotate(' + Math.round(deg || 0) + 'deg)">' +
+        '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">' +
+        '<path d="M12 2c-.6 0-1 .9-1 2.3V9L3 13.4v1.6l8-2.2v4.3l-2 1.5v1.3l3-.8 3 .8v-1.3l-2-1.5v-4.3l8 2.2v-1.6L13 9V4.3C13 2.9 12.6 2 12 2z"/>' +
+        '</svg></div>',
+      iconSize: [22, 22], iconAnchor: [11, 11] });
   }
 
   async function buildMap(i) {
@@ -148,7 +161,10 @@
       pts.push([from.lat, from.lon]); line.push([from.lat, from.lon]);
     }
     if (ac && ac.lat != null) {
-      L.marker([ac.lat, ac.lon], { icon: planeIcon(ac.track) }).addTo(layer);
+      // Always aim the plane at the destination dot (fall back to its live
+      // heading only if we don't have destination coordinates).
+      const head = (to && to.lat != null) ? bearingTo(ac.lat, ac.lon, to.lat, to.lon) : ac.track;
+      L.marker([ac.lat, ac.lon], { icon: planeIcon(head) }).addTo(layer);
       pts.push([ac.lat, ac.lon]); line.push([ac.lat, ac.lon]);
     }
     if (to.lat != null) {

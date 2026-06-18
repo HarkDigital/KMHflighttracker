@@ -212,11 +212,12 @@
     await enrich(cands, ap, { fallback: false });
     if (gen !== pollGen) return;
     const rows = cands.filter(routed).slice(0, MAX_ROWS);
-    if (!rows.length && noteEl) noteEl.textContent = 'No ' + type + ' near ' + ap.name + ' right now.';
     render(rows, firstPaint || !showed);
     saveCache(ap.icao, rows);
     firstPaint = false;
-    if (updatedEl) { updatedEl.textContent = 'LIVE • ' + rows.length + ' ' + type; updatedEl.classList.remove('stale'); }
+    if (updatedEl && rows.length) { updatedEl.textContent = 'LIVE • ' + rows.length + ' ' + type; updatedEl.classList.remove('stale'); }
+    // Deliberately NOT declaring "no departures" yet — routes may still be
+    // resolving in phase 2. The "Loading…" note stays up until we know for sure.
 
     // Phase 2 (background): slower per-callsign adsbdb lookups for the flights
     // routeset didn't know. Re-render only if it actually adds/reorders rows.
@@ -228,6 +229,8 @@
         saveCache(ap.icao, rows2);
         if (updatedEl) updatedEl.textContent = 'LIVE • ' + rows2.length + ' ' + type;
       }
+      // Full data has now loaded — only now is it safe to say the board is empty.
+      if (noteEl && !rows2.length) noteEl.textContent = 'No ' + type + ' near ' + ap.name + ' right now.';
     });
   }
 

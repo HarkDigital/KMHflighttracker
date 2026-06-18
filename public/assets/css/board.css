@@ -220,7 +220,15 @@ main {
 /* ---------- Board ----------
    Header and rows are flex with identical fixed column widths so they always
    line up. Widths are sized to the split-flap fields and fit a portrait iPad. */
-.board { width: 100%; margin: 0; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.board { width: 100%; margin: 0; display: flex; flex-direction: column; flex: 1; min-height: 0; position: relative; }
+/* The loading / "no departures" note is centred in the board area, not stuck
+   at the bottom under an empty list. */
+#board-note {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 1.5rem; pointer-events: none;
+}
+#board-note.hidden { display: none; }
 /* Rows share the leftover height so the board fills the screen without huge
    gaps; capped so a near-empty board doesn't show giant rows. */
 #board-list { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
