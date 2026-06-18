@@ -43,9 +43,15 @@
   function icon(track, onGround) {
     return L.divIcon({
       className: '',
+      // SVG plane points straight up at 0deg, so rotate(track) aims the nose the
+      // way the aircraft is actually flying (toward its destination en route) —
+      // unlike the ✈ glyph, which has a built-in diagonal tilt.
       html: '<div class="plane-marker' + (onGround ? ' on-ground' : '') +
-            '" style="transform:rotate(' + Math.round(track || 0) + 'deg)">✈</div>',
-      iconSize: [22, 22], iconAnchor: [11, 11],
+            '" style="transform:rotate(' + Math.round(track || 0) + 'deg)">' +
+            '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">' +
+            '<path d="M12 2c-.6 0-1 .9-1 2.3V9L3 13.4v1.6l8-2.2v4.3l-2 1.5v1.3l3-.8 3 .8v-1.3l-2-1.5v-4.3l8 2.2v-1.6L13 9V4.3C13 2.9 12.6 2 12 2z"/>' +
+            '</svg></div>',
+      iconSize: [18, 18], iconAnchor: [9, 9],
     });
   }
 
