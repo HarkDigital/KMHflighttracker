@@ -88,3 +88,10 @@ function feed_cache_sweep($dir, $prefix) {
         if (time() - filemtime($f) > 86400) @unlink($f);
     }
 }
+
+/** Send the buffered response to the client and keep running (PHP-FPM only).
+ *  Returns true if the request was detached so background work is invisible. */
+function feed_finish() {
+    if (function_exists('fastcgi_finish_request')) { @fastcgi_finish_request(); return true; }
+    return false;
+}
