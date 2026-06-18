@@ -110,7 +110,14 @@ window.Adsbdb = (function () {
 
   // Resolve many callsigns at once via adsb.lol's routeset (one request for the
   // whole board). Returns a map callsign -> { origin, destination } | null.
-  async function resolveBatch(planes) {
+  //
+  // opts.fallback (default true): when false, skip the slow per-callsign adsbdb
+  // GET fallback and leave unresolved callsigns out of the result (uncached, so
+  // a later full pass can still fill them). This lets the board paint fast from
+  // the single batched routeset request, then enrich the stragglers in the
+  // background.
+  async function resolveBatch(planes, opts) {
+    const doFallback = !opts || opts.fallback !== false;
     const out = {};
     const need = [];
     for (const p of planes) {
@@ -123,15 +130,19 @@ window.Adsbdb = (function () {
     }
     if (need.length) {
       // 1) Try adsb.lol routeset (batched, position-aware) — map by the callsign
-      //    in each result (the API may reorder / omit unknowns).
+      //    in each result (the API may reorder / omit unknowns). Time-boxed so a
+      //    slow request can't stall the board.
       let results = [];
+      const ctrl = ('AbortController' in window) ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), 6000) : null;
       try {
         const res = await fetch('https://api.adsb.lol/api/0/routeset', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ planes: need.map(n => ({ callsign: n.cs, lat: n.lat, lng: n.lng })) }),
+          signal: ctrl ? ctrl.signal : undefined,
         });
         if (res.ok) { const j = await res.json(); if (Array.isArray(j)) results = j; }
-      } catch (_) {}
+      } catch (_) {} finally { if (timer) clearTimeout(timer); }
       const byCs = {};
       results.forEach(r => {
         if (!r || !r.callsign) return;
@@ -145,13 +156,16 @@ window.Adsbdb = (function () {
         if (r) { mem.set('rt.' + n.cs, r); lsSet('rt.' + n.cs, r); out[n.cs] = r; }
         else fallback.push(n.cs);
       }
-      // 2) Fall back to adsbdb (GET, reliable) for anything routeset didn't return.
-      await Promise.all(fallback.slice(0, 30).map(async cs => {
-        let r = null;
-        try { const a = await route(cs); if (a) r = { origin: a.origin, destination: a.destination, approx: true }; } catch (_) {}
-        mem.set('rt.' + cs, r); lsSet('rt.' + cs, r); out[cs] = r;
-      }));
-      fallback.slice(30).forEach(cs => { out[cs] = null; });
+      // 2) Fall back to adsbdb (GET, reliable) for anything routeset didn't
+      //    return — only when asked (slow; the board does this in the background).
+      if (doFallback) {
+        await Promise.all(fallback.slice(0, 30).map(async cs => {
+          let r = null;
+          try { const a = await route(cs); if (a) r = { origin: a.origin, destination: a.destination, approx: true }; } catch (_) {}
+          mem.set('rt.' + cs, r); lsSet('rt.' + cs, r); out[cs] = r;
+        }));
+        fallback.slice(30).forEach(cs => { out[cs] = null; });
+      }
     }
     return out;
   }

@@ -36,8 +36,10 @@ window.Adsb = (function () {
   }
 
   async function hit(url) {
+    const ctrl = ('AbortController' in window) ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 7000) : null;
     try {
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetch(url, { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined });
       if (!res.ok) throw new Error(res.status);
       const d = await res.json();
       return (d.ac || d.aircraft || [])
@@ -46,7 +48,7 @@ window.Adsb = (function () {
     } catch (e) {
       idx = (idx + 1) % POINT.length;     // try the other provider next time
       return null;
-    }
+    } finally { if (timer) clearTimeout(timer); }
   }
 
   return {

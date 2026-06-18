@@ -31,6 +31,7 @@
   let type = 'departures';
   let timer = null;
   let firstPaint = true;
+  let pollGen = 0;          // invalidates in-flight background enrichment
   const rowPool = [];
   const seenClock = new Map();
 
@@ -149,9 +150,9 @@
     return (i && i === (ap.iata || '').toUpperCase()) || (c && c === (ap.icao || '').toUpperCase());
   }
 
-  async function enrich(rows, ap) {
-    const map = await Adsbdb.resolveBatch(rows.map(r => ({ callsign: r.callsign, lat: r.lat, lon: r.lon })));
+  function applyRoutes(rows, map, ap) {
     rows.forEach(row => {
+      if (row.hasRoute) return;                         // resolved in an earlier pass
       const rt = map[(row.callsign || '').toUpperCase()];
       if (!rt || !rt.origin || !rt.destination) return;
       const oM = apMatch(rt.origin, ap), dM = apMatch(rt.destination, ap);
@@ -174,9 +175,20 @@
     rows.sort((x, y) => (x.hasRoute === y.hasRoute) ? x.dist - y.dist : (x.hasRoute ? -1 : 1));
   }
 
+  // opts.fallback=false -> fast path (cached routes + one batched routeset call);
+  // true -> also do the slower per-callsign adsbdb lookups for the stragglers.
+  async function enrich(rows, ap, opts) {
+    const map = await Adsbdb.resolveBatch(
+      rows.map(r => ({ callsign: r.callsign, lat: r.lat, lon: r.lon })), opts);
+    applyRoutes(rows, map, ap);
+  }
+
+  const routed = r => !!(r.place || r.placeIata);
+
   async function poll() {
     const ap = App.airport;
     if (!ap) return;
+    const gen = ++pollGen;
     if (destHead) destHead.textContent = type === 'arrivals' ? 'Origin' : 'Destination';
 
     let showed = false;
@@ -187,20 +199,36 @@
     }
 
     const list = await Adsb.point(ap.lat, ap.lon, RADIUS_NM);
+    if (gen !== pollGen) return;                          // a newer poll superseded us
     if (list === null) { if (updatedEl) updatedEl.textContent = 'OFFLINE'; return; }
 
     const cands = classify(list, ap);
     // Only ever show flights with a known destination/origin — never blank rows
     // (military, GA, and odd callsigns the route DBs don't recognise).
-    const routed = r => !!(r.place || r.placeIata);
-    if (!showed) render(cands.filter(routed), firstPaint);   // quick paint; routes fill in below
-    await enrich(cands, ap);
+    if (!showed) render(cands.filter(routed), firstPaint);   // quick paint of cached routes
+
+    // Phase 1 (fast): cached routes + one batched routeset request. This paints
+    // most of the board within a second or two.
+    await enrich(cands, ap, { fallback: false });
+    if (gen !== pollGen) return;
     const rows = cands.filter(routed).slice(0, MAX_ROWS);
     if (!rows.length && noteEl) noteEl.textContent = 'No ' + type + ' near ' + ap.name + ' right now.';
     render(rows, firstPaint || !showed);
     saveCache(ap.icao, rows);
     firstPaint = false;
     if (updatedEl) { updatedEl.textContent = 'LIVE • ' + rows.length + ' ' + type; updatedEl.classList.remove('stale'); }
+
+    // Phase 2 (background): slower per-callsign adsbdb lookups for the flights
+    // routeset didn't know. Re-render only if it actually adds/reorders rows.
+    enrich(cands, ap, { fallback: true }).then(() => {
+      if (gen !== pollGen) return;
+      const rows2 = cands.filter(routed).slice(0, MAX_ROWS);
+      if (rows2.length !== rows.length || rows2.some((r, i) => r !== rows[i])) {
+        render(rows2, false);
+        saveCache(ap.icao, rows2);
+        if (updatedEl) updatedEl.textContent = 'LIVE • ' + rows2.length + ' ' + type;
+      }
+    });
   }
 
   function reset() { firstPaint = true; while (rowPool.length) rowPool.pop().el.remove(); }
