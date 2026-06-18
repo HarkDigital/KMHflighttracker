@@ -188,7 +188,11 @@
     const hint = App.flightHint;
     if (!num) { el.innerHTML = '<div class="empty">No flight selected.</div>'; return; }
     skeleton(num);
-    const i = await Flights.lookup(num);
+    // Fetch live ADS-B in parallel but DON'T wait on it — the schedule is the
+    // primary content and live position is often slow or absent. Render the
+    // schedule as soon as it's ready, then fold telemetry in below.
+    const livePromise = Flights.live(num);
+    const i = await Flights.lookup(num, { skipLive: true });
     if (cs !== num) return;
     // When opened from the board, the board's route is the physical aircraft the
     // user tapped. AeroDataBox (looked up by flight number) can land on a
@@ -208,13 +212,23 @@
     }
     info = i;
     render(num, i);
+    const ac = await livePromise;              // arrives a beat later (or never)
+    if (cs === num && ac) applyAc(ac);
   }
 
-  async function refresh() {
-    if (!cs || isHidden() || !info) return;
-    let ac = null;
-    try { const l = await Adsb.callsign(cs); ac = l && l[0]; } catch (_) {}
-    info.live = ac ? { alt: ac.alt, gs: ac.gs, vs: ac.baroRate, track: ac.track, lat: ac.lat, lon: ac.lon } : info.live;
+  // Apply a live ADS-B reading to the open page: telemetry tiles, computed
+  // dep/arr times, status (free source only) and the map marker.
+  function applyAc(ac) {
+    if (!info) return;
+    if (ac) {
+      info.live = { alt: ac.alt, gs: ac.gs, vs: ac.baroRate, track: ac.track, lat: ac.lat, lon: ac.lon };
+      info.airborne = ac.alt !== 'ground';
+      if (info.source === 'free') {
+        const s = ac.alt === 'ground' ? 'ON GROUND' : 'EN ROUTE';
+        const pill = el.querySelector('.fp-status');
+        if (info.status !== s && pill) { info.status = s; pill.className = 'fp-status ' + App.statusClass(s); pill.textContent = s; }
+      }
+    }
     const t = tele(info);
     const v = el.querySelectorAll('.fp-grid .fp-stat .v');
     if (v.length >= 4) { v[0].textContent = t.alt; v[1].textContent = t.gs; v[2].textContent = t.vs; v[3].textContent = t.hdg; }
@@ -222,6 +236,13 @@
     if (dep) dep.textContent = depTime(info);
     if (eta) eta.textContent = arrTime(info);
     draw(info, false);
+  }
+
+  async function refresh() {
+    if (!cs || isHidden() || !info) return;
+    let ac = null;
+    try { const l = await Adsb.callsign(cs); ac = l && l[0]; } catch (_) {}
+    applyAc(ac);
   }
 
   window.Views = window.Views || {};
