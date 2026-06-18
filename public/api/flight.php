@@ -23,6 +23,7 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: public, max-age=60');
 
 function out($obj, $code = 200) {
+    if (!empty($GLOBALS['BG'])) exit;        // response already sent; this is the bg refresh
     http_response_code($code);
     echo json_encode($obj, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
@@ -61,6 +62,20 @@ if (is_file($cacheFile)) {
         if (is_array($cached)) {
             $cached['ageSeconds'] = $age;
             out($cached);
+        }
+    }
+    // Stale-while-revalidate: a slightly-stale copy (up to 30 min) is served
+    // INSTANTLY and the AeroDataBox refresh runs in the background, so
+    // re-opening a flight is never slow. (PHP-FPM only; otherwise we fall
+    // through to the normal synchronous refresh below.)
+    if ($age < 1800 && function_exists('fastcgi_finish_request')) {
+        $cached = json_decode(file_get_contents($cacheFile), true);
+        if (is_array($cached)) {
+            $cached['ageSeconds'] = $age;
+            $cached['stale'] = true;
+            echo json_encode($cached, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            fastcgi_finish_request();
+            $GLOBALS['BG'] = true;           // keep running to refresh; output suppressed
         }
     }
 }

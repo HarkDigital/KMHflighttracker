@@ -305,6 +305,11 @@
     if (!initial) initial = airports.find(a => a.icao === 'KPHL') || airports[0];
     setAirport(initial, { silent: true });
 
+    // Warm the live-feed cache for the starting airport so the first Board/Radar
+    // open is instant: the server then serves it from cache while refreshing
+    // behind. Fire-and-forget; result is discarded.
+    try { if (window.Adsb && initial) Adsb.point(initial.lat, initial.lon, 90); } catch (_) {}
+
     const hash = (location.hash || '').slice(1);
     if (hash.indexOf('flight/') === 0) {
       openFlight(hash.slice(7));
