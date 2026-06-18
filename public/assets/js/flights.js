@@ -54,7 +54,7 @@ window.Flights = (function () {
       status: (d.status || '').toUpperCase() || 'SCHEDULED',
       aircraft: d.aircraft || (ac && ac.type) || '', reg: d.reg || (ac && ac.reg) || '',
       airborne: !!ac && ac.alt !== 'ground',
-      live: ac ? { alt: ac.alt, gs: ac.gs, vs: ac.baroRate, track: ac.track, lat: ac.lat, lon: ac.lon } : null,
+      live: ac ? { hex: ac.hex, alt: ac.alt, gs: ac.gs, vs: ac.baroRate, track: ac.track, lat: ac.lat, lon: ac.lon } : null,
       from: ap(d.from), to: ap(d.to), approx: false,
     };
   }
@@ -66,7 +66,7 @@ window.Flights = (function () {
       status: !ac ? 'NOT AIRBORNE' : (ac.alt === 'ground' ? 'ON GROUND' : 'EN ROUTE'),
       aircraft: (ac && ac.type) || (acInfo && acInfo.type) || '', reg: (ac && ac.reg) || (acInfo && acInfo.reg) || '',
       airborne: !!ac && ac.alt !== 'ground',
-      live: ac ? { alt: ac.alt, gs: ac.gs, vs: ac.baroRate, track: ac.track, lat: ac.lat, lon: ac.lon } : null,
+      live: ac ? { hex: ac.hex, alt: ac.alt, gs: ac.gs, vs: ac.baroRate, track: ac.track, lat: ac.lat, lon: ac.lon } : null,
       from: ap(rt && rt.origin), to: ap(rt && rt.destination), approx: !!(rt && rt.approx),
     };
   }

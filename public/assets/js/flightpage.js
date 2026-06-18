@@ -151,27 +151,65 @@
     setTimeout(() => { if (map) map.invalidateSize(); }, 80);
   }
 
+  // Points along the great-circle (shortest path over the globe) between two
+  // coords, so the route reads as a curve rather than a flat straight line.
+  function greatCircle(a, b, segs) {
+    const la1 = toRad(a[0]), lo1 = toRad(a[1]), la2 = toRad(b[0]), lo2 = toRad(b[1]);
+    const dLat = la2 - la1, dLon = lo2 - lo1;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+    const d = 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+    if (!d) return [a, b];
+    const out = [];
+    for (let i = 0; i <= segs; i++) {
+      const f = i / segs;
+      const A = Math.sin((1 - f) * d) / Math.sin(d), B = Math.sin(f * d) / Math.sin(d);
+      const x = A * Math.cos(la1) * Math.cos(lo1) + B * Math.cos(la2) * Math.cos(lo2);
+      const y = A * Math.cos(la1) * Math.sin(lo1) + B * Math.cos(la2) * Math.sin(lo2);
+      const z = A * Math.sin(la1) + B * Math.sin(la2);
+      out.push([Math.atan2(z, Math.hypot(x, y)) * 180 / Math.PI, Math.atan2(y, x) * 180 / Math.PI]);
+    }
+    return out;
+  }
+
   function draw(i, fit) {
     if (!map || !layer) return;
     layer.clearLayers();
-    const pts = [], line = [];
+    const pts = [];
     const from = i.from, to = i.to, ac = i.live;
+    const hasAc = ac && ac.lat != null;
+    const acPt = hasAc ? [ac.lat, ac.lon] : null;
+    const ROUTE = { color: '#f5b301', weight: 1.5, opacity: 0.4, dashArray: '4 6' };
+    const FLOWN = { color: '#f5b301', weight: 2.6, opacity: 0.95 };
+
+    // Real flown track (ADS-B history) when we have it; else a great-circle.
+    if (i.trace && i.trace.length > 1) {
+      const t = i.trace.slice();
+      if (hasAc) t.push(acPt);                                   // extend to the live point
+      L.polyline(t, FLOWN).addTo(layer);
+      if (hasAc && to.lat != null)                              // remaining leg, curved + dashed
+        L.polyline(greatCircle(acPt, [to.lat, to.lon], 48), ROUTE).addTo(layer);
+    } else if (hasAc) {
+      if (from.lat != null) L.polyline(greatCircle([from.lat, from.lon], acPt, 48), { color: '#f5b301', weight: 2.2, opacity: 0.85 }).addTo(layer);
+      if (to.lat != null)   L.polyline(greatCircle(acPt, [to.lat, to.lon], 48), ROUTE).addTo(layer);
+    } else if (from.lat != null && to.lat != null) {
+      L.polyline(greatCircle([from.lat, from.lon], [to.lat, to.lon], 64), Object.assign({}, ROUTE, { opacity: 0.6 })).addTo(layer);
+    }
+
     if (from.lat != null) {
       L.circleMarker([from.lat, from.lon], { radius: 5, color: '#38d66b', weight: 2, fillOpacity: 1 }).bindTooltip(from.iata || '').addTo(layer);
-      pts.push([from.lat, from.lon]); line.push([from.lat, from.lon]);
+      pts.push([from.lat, from.lon]);
     }
-    if (ac && ac.lat != null) {
+    if (hasAc) {
       // Always aim the plane at the destination dot (fall back to its live
       // heading only if we don't have destination coordinates).
       const head = (to && to.lat != null) ? bearingTo(ac.lat, ac.lon, to.lat, to.lon) : ac.track;
-      L.marker([ac.lat, ac.lon], { icon: planeIcon(head) }).addTo(layer);
-      pts.push([ac.lat, ac.lon]); line.push([ac.lat, ac.lon]);
+      L.marker(acPt, { icon: planeIcon(head) }).addTo(layer);
+      pts.push(acPt);
     }
     if (to.lat != null) {
       L.circleMarker([to.lat, to.lon], { radius: 5, color: '#ff5a52', weight: 2, fillOpacity: 1 }).bindTooltip(to.iata || '').addTo(layer);
-      pts.push([to.lat, to.lon]); line.push([to.lat, to.lon]);
+      pts.push([to.lat, to.lon]);
     }
-    if (line.length >= 2) L.polyline(line, { color: '#f5b301', weight: 1.5, opacity: 0.7, dashArray: '4 6' }).addTo(layer);
     if (fit && pts.length === 1) map.setView(pts[0], 7);
     else if (fit && pts.length) map.fitBounds(pts, { padding: [30, 30] });
     else if (fit) map.setView([39.87, -75.24], 4);
@@ -230,6 +268,22 @@
     render(num, i);
     const ac = await livePromise;              // arrives a beat later (or never)
     if (cs === num && ac) applyAc(ac);
+    loadTrace(num);                            // overlay the real flown path
+  }
+
+  // Fetch the aircraft's real ADS-B track (server-cached) and draw it. Silent
+  // no-op (great-circle stays) when there's no hex or the trace isn't available.
+  async function loadTrace(num) {
+    const cfg = window.APP_CONFIG || {};
+    const hex = info && info.live && String(info.live.hex || '').toLowerCase().replace(/[^0-9a-f]/g, '');
+    if (!cfg.traceApi || !hex || hex.length < 6) return;
+    try {
+      const r = await fetch(cfg.traceApi + '?hex=' + hex, { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      const t = j && j.trace;
+      if (cs === num && info && Array.isArray(t) && t.length > 1) { info.trace = t; draw(info, false); }
+    } catch (_) {}
   }
 
   // Apply a live ADS-B reading to the open page: telemetry tiles, computed
@@ -237,7 +291,7 @@
   function applyAc(ac) {
     if (!info) return;
     if (ac) {
-      info.live = { alt: ac.alt, gs: ac.gs, vs: ac.baroRate, track: ac.track, lat: ac.lat, lon: ac.lon };
+      info.live = { hex: ac.hex, alt: ac.alt, gs: ac.gs, vs: ac.baroRate, track: ac.track, lat: ac.lat, lon: ac.lon };
       info.airborne = ac.alt !== 'ground';
       if (info.source === 'free') {
         const s = ac.alt === 'ground' ? 'ON GROUND' : 'EN ROUTE';
@@ -254,11 +308,14 @@
     draw(info, false);
   }
 
+  let refreshN = 0;
   async function refresh() {
     if (!cs || isHidden() || !info) return;
     let ac = null;
     try { const l = await Adsb.callsign(cs); ac = l && l[0]; } catch (_) {}
     applyAc(ac);
+    // Extend the flown track roughly once a minute (server cache makes it cheap).
+    if (++refreshN % 4 === 0) loadTrace(cs);
   }
 
   window.Views = window.Views || {};
