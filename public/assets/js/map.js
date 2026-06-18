@@ -65,6 +65,44 @@
         a.flight + '\');return false;">More info →</a>' : '');
   }
 
+  // Bearing (deg clockwise from north) from one point to another.
+  function bearingTo(la1, lo1, la2, lo2) {
+    const r = Math.PI / 180;
+    const y = Math.sin((lo2 - lo1) * r) * Math.cos(la2 * r);
+    const x = Math.cos(la1 * r) * Math.sin(la2 * r) -
+              Math.sin(la1 * r) * Math.cos(la2 * r) * Math.cos((lo2 - lo1) * r);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+
+  // Direction to draw a plane: toward its known destination, else its heading.
+  function heading(a) {
+    return (a.dest && a.dest.lat != null)
+      ? bearingTo(a.lat, a.lon, a.dest.lat, a.dest.lon) : a.track;
+  }
+
+  // Resolve each plane's route (cached, shared) so the icon can point at the
+  // destination. Runs in the background; planes show heading until resolved.
+  async function resolveRoutes() {
+    const planes = [];
+    fleet.forEach(a => {
+      const cs = a.flight && a.flight.toUpperCase();
+      if (cs && a.dest === undefined) planes.push({ callsign: cs, lat: a.lat, lon: a.lon });
+    });
+    if (!planes.length || !window.Adsbdb) return;
+    let m = {};
+    try { m = await Adsbdb.resolveBatch(planes); } catch (_) { return; }
+    let changed = false;
+    fleet.forEach(a => {
+      const cs = a.flight && a.flight.toUpperCase();
+      if (!cs || a.dest !== undefined) return;
+      if (!Object.prototype.hasOwnProperty.call(m, cs)) return;   // not resolved yet; retry next poll
+      const rt = m[cs];
+      a.dest = (rt && rt.destination && rt.destination.lat != null) ? rt.destination : null;
+      changed = true;
+    });
+    if (changed) redraw();
+  }
+
   // Advance a lat/lon by ground speed (kt) along a track (deg) for dt seconds.
   function deadReckon(a, dtSec) {
     if (!a.gs || a.alt === 'ground') return [a.lat, a.lon];
@@ -97,6 +135,7 @@
       a.track = raw.track || 0;
       a.gs = raw.gs || 0;
       a.alt = raw.alt;
+      if (a.flight !== raw.callsign) a.dest = undefined;   // new callsign -> re-resolve route
       a.flight = raw.callsign;
       a.type = raw.type;
       a.reg = raw.reg;
@@ -104,6 +143,7 @@
       a.base = now;
     });
     redraw();
+    resolveRoutes();        // then aim each plane at its destination (cached)
   }
 
   function redraw() {
@@ -117,12 +157,12 @@
       }
       const [lat, lon] = deadReckon(a, (now - a.base) / 1000);
       if (!a.marker) {
-        a.marker = L.marker([lat, lon], { icon: icon(a.track, a.alt === 'ground') });
+        a.marker = L.marker([lat, lon], { icon: icon(heading(a), a.alt === 'ground') });
         a.marker.bindPopup(popup(a));
         layer.addLayer(a.marker);
       } else {
         a.marker.setLatLng([lat, lon]);
-        a.marker.setIcon(icon(a.track, a.alt === 'ground'));
+        a.marker.setIcon(icon(heading(a), a.alt === 'ground'));
         a.marker.setPopupContent(popup(a));
       }
     });
