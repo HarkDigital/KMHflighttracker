@@ -37,7 +37,7 @@ jobs:
       # AeroDataBox proxy for accurate routes, times and gates.
       - name: Pin runtime config
         run: |
-          echo "window.APP_CONFIG = { dataMode: 'static', flightApi: 'api/flight.php' };" > public/assets/js/runtime-config.js
+          echo "window.APP_CONFIG = { dataMode: 'static', flightApi: 'api/flight.php', adsbProxy: 'api/adsb.php', routeProxy: 'api/routes.php' };" > public/assets/js/runtime-config.js
 
       # Generate the server-only AeroDataBox config from the GitHub secret. The
       # key never lands in the repo or the browser — only in this PHP file on the

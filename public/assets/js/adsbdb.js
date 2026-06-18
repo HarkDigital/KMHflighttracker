@@ -15,6 +15,15 @@ window.Adsbdb = (function () {
 
   const TTL = 12 * 3600 * 1000;
   const mem = new Map();
+  const routeProxy = (window.APP_CONFIG || {}).routeProxy || null;
+
+  // fetch with a hard timeout (resolves to null on timeout/failure).
+  function fetchT(url, options, ms) {
+    const ctrl = ('AbortController' in window) ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), ms) : null;
+    const opts = Object.assign({}, options, ctrl ? { signal: ctrl.signal } : {});
+    return fetch(url, opts).finally(() => { if (timer) clearTimeout(timer); }).catch(() => null);
+  }
 
   function lsGet(key) {
     try {
@@ -129,6 +138,33 @@ window.Adsbdb = (function () {
       need.push({ cs, lat: p.lat, lng: p.lon });
     }
     if (need.length) {
+      // Preferred path: our cached same-origin proxy resolves the whole batch
+      // server-side (routeset + adsbdb) and shares the result across devices, so
+      // after the first lookup the board resolves from cache instantly.
+      if (routeProxy) {
+        const res = await fetchT(routeProxy, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planes: need.map(n => ({ callsign: n.cs, lat: n.lat, lng: n.lng })), fast: !doFallback }),
+        }, 9000);
+        if (res && res.ok) {
+          let j = null;
+          try { j = await res.json(); } catch (_) {}
+          const m = (j && j.map) || {};
+          for (const n of need) {
+            // Only entries the proxy returned are definitive (a route, or a
+            // confirmed null for a known-unknown callsign) — cache those. Omitted
+            // callsigns (fast-mode skips, or transient upstream failures) are
+            // left unresolved and uncached so a later pass retries them.
+            if (Object.prototype.hasOwnProperty.call(m, n.cs)) {
+              const r = m[n.cs];
+              mem.set('rt.' + n.cs, r); lsSet('rt.' + n.cs, r); out[n.cs] = r;
+            }
+          }
+          return out;
+        }
+        // proxy unreachable -> fall through to the direct cross-origin path
+      }
+
       // 1) Try adsb.lol routeset (batched, position-aware) — map by the callsign
       //    in each result (the API may reorder / omit unknowns). Time-boxed so a
       //    slow request can't stall the board.
